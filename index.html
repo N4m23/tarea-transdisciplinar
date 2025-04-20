@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>El acto de respirar - Presencia, pausa y cuidado</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #000;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+
+    .container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .controls {
+      position: absolute;
+      bottom: 30px;
+      z-index: 10;
+      text-align: center;
+    }
+
+    button {
+      background-color: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      border: 1px solid #fff;
+      padding: 10px 20px;
+      border-radius: 30px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.3s ease;
+      margin-top: 10px;
+      outline: none;
+    }
+
+    button:hover {
+      background-color: rgba(255, 255, 255, 0.4);
+    }
+
+    .info {
+      position: absolute;
+      top: 30px;
+      text-align: center;
+      max-width: 600px;
+      padding: 0 20px;
+      font-size: 18px;
+      line-height: 1.5;
+      opacity: 0.8;
+    }
+
+    .info h1 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+
+    .info p {
+      margin-bottom: 5px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .volume-indicator {
+      width: 80px;
+      height: 15px;
+      background-color: rgba(255, 255, 255, 0.3);
+      margin-top: 15px;
+      position: relative;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+
+    .volume-level {
+      height: 100%;
+      width: 0%;
+      background-color: #4CAF50;
+      transition: width 0.1s;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="info">
+      <h1>El acto de respirar como gesto de presencia, pausa y cuidado</h1>
+      <p>Mueve el mouse para ver la sábana moverse suavemente.</p>
+      <p>Haz clic o desplázate para activar la experiencia y respira para dar vida a la tela con tu aliento.</p>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+      <button id="mic-button">Activar respiración</button>
+      <div class="volume-indicator hidden" id="volume-indicator">
+        <div class="volume-level" id="volume-level"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuración del canvas y la simulación
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const micButton = document.getElementById('mic-button');
+    const volumeIndicator = document.getElementById('volume-indicator');
+    const volumeLevel = document.getElementById('volume-level');
+
+    // Ajustar tamaño del canvas
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Crear audio para respiración (usando el archivo externo)
+    const breathSound = new Audio();
+    breathSound.src = "respiracion.mp3"; // Asegúrate que esté en la misma carpeta
+    breathSound.loop = true;
+    breathSound.volume = 0.7; // Aumentar volumen
+
+    // Variables para el micrófono y audio
+    let audioContext;
+    let analyzer;
+    let microphone;
+    let micActive = false;
+    let dataArray;
+
+    let audioElement;
+    let audioAnalyser;
+    let audioDataArray;
+
+    // Variables para la interacción del mouse
+    let mouseX = canvas.width / 2;
+    let mouseY = canvas.height / 2;
+    let prevMouseX = mouseX;
+    let prevMouseY = mouseY;
+    let mouseSpeedX = 0;
+    let mouseSpeedY = 0;
+
+    // Configuración de la simulación de tela
+    const clothWidth = 400;
+    const clothHeight = 300;
+    const numPointsX = 30;
+    const numPointsY = 20;
+    const restDistance = clothWidth / numPointsX;
+
+    // Clase Punto para la simulación de tela
+    class Point {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.originalX = x;
+        this.originalY = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.pinned = false;
+        this.mass = 1;
+      }
+    }
+
+    // Clase tela para simulación
+    class Cloth {
+      constructor() {
+        this.points = [];
+
+        // Crear puntos de la tela
+        for (let y = 0; y <= numPointsY; y++) {
+          for (let x = 0; x <= numPointsX; x++) {
+            const u = x / numPointsX;
+            const v = y / numPointsY;
+
+            // Posición inicial en forma de curva suave
+            const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
+            const py = canvas.height / 2 - clothHeight / 2 + clothHeight * v;
+
+            const point = new Point(px, py);
+
+            // Fijar solo los puntos superiores para que cuelgue
+            if (y === 0) {
+              point.pinned = true;
+            }
+
+            this.points.push(point);
+          }
+        }
+
+        // Generar el índice para acceder a los puntos fácilmente
+        this.getPoint = (x, y) => this.points[y * (numPointsX + 1) + x];
+
+        // Conectar puntos con restricciones elásticas
+        this.constraints = [];
+
+        // Restricciones estructurales horizontales
+        for (let y = 0; y <= numPointsY; y++) {
+          for (let x = 0; x < numPointsX; x++) {
+            this.constraints.push({
+              p1: this.getPoint(x, y),
+              p2: this.getPoint(x + 1, y),
+              distance: restDistance
+            });
+          }
+        }
+
+        // Restricciones estructurales verticales
+        for (let x = 0; x <= numPointsX; x++) {
+          for (let y = 0; y < numPointsY; y++) {
+            this.constraints.push({
+              p1: this.getPoint(x, y),
+              p2: this.getPoint(x, y + 1),
+              distance: restDistance
+            });
+          }
+        }
+
+        // Restricciones de corte diagonal 1
+        for (let y = 0; y < numPointsY; y++) {
+          for (let x = 0; x < numPointsX; x++) {
+            this.constraints.push({
+              p1: this.getPoint(x, y),
+              p2: this.getPoint(x + 1, y + 1),
+              distance: Math.sqrt(restDistance * restDistance * 2)
+            });
+          }
+        }
+
+        // Restricciones de corte diagonal 2
+        for (let y = 0; y < numPointsY; y++) {
+          for (let x = 0; x < numPointsX; x++) {
+            this.constraints.push({
+              p1: this.getPoint(x + 1, y),
+              p2: this.getPoint(x, y + 1),
+              distance: Math.sqrt(restDistance * restDistance * 2)
+            });
+          }
+        }
+      }
+
+      update(dt) {
+        // Constantes físicas
+        const GRAVITY = 0.0981 * dt * 2; // Aumentar gravedad
+        const DAMPING = 0.95; // Reducir amortiguación
+        const AIR_RESISTANCE = 0.98; // Nueva resistencia del aire
+
+        // Aplicar fuerzas
+        for (let point of this.points) {
+          if (!point.pinned) {
+            point.vy += GRAVITY;
+
+            // Aplicar resistencia del aire
+            point.vx *= AIR_RESISTANCE;
+            point.vy *= AIR_RESISTANCE;
+
+            // Verlet integration
+            const prevX = point.x;
+            const prevY = point.y;
+
+            point.x += point.vx;
+            point.y += point.vy;
+
+            // Mayor amortiguación
+            point.vx = (point.x - prevX) * DAMPING;
+            point.vy = (point.y - prevY) * DAMPING;
+          }
+        }
+
+        // Resolver restricciones
+        const iterations = 15;
+        for (let i = 0; i < iterations; i++) {
+          for (let c of this.constraints) {
+            const p1 = c.p1;
+            const p2 = c.p2;
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist === 0) continue;
+            const diff = (c.distance - dist) / dist;
+            const percent1 = p1.pinned ? 0 : 0.5;
+            const percent2 = p2.pinned ? 0 : 0.5;
+            const offsetX = dx * diff;
+            const offsetY = dy * diff;
+            p1.x -= offsetX * percent1;
+            p1.y -= offsetY * percent1;
+            p2.x += offsetX * percent2;
+            p2.y += offsetY * percent2;
+          }
+        }
+      }
+
+      applyWindForce(forceX, forceY) {
+        for (let point of this.points) {
+          if (!point.pinned) {
+            const randomX = (Math.random() - 0.5) * 0.1;
+            const randomY = (Math.random() - 0.5) * 0.1;
+            point.vx += forceX + randomX;
+            point.vy += forceY + randomY;
+          }
+        }
+      }
+
+      draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let y = 0; y < numPointsY; y++) {
+          for (let x = 0; x < numPointsX; x++) {
+            const p1 = this.getPoint(x, y);
+            const p2 = this.getPoint(x + 1, y);
+            const p3 = this.getPoint(x + 1, y + 1);
+            const p4 = this.getPoint(x, y + 1);
+
+            const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
+            const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
+
+            const nx = p3.y - p1.y;
+            const ny = -(p3.x - p1.x);
+            const norm = Math.sqrt(nx * nx + ny * ny);
+            const normalX = nx / norm;
+            const normalY = ny / norm;
+
+            const lightX = 0.5;
+            const lightY = -1;
+            const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
+            const brightness = Math.floor(210 + lightIntensity * 45);
+
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p3.x, p3.y);
+            ctx.lineTo(p4.x, p4.y);
+            ctx.closePath();
+
+            const gradient = ctx.createRadialGradient(
+              centerX, centerY, 0,
+              centerX, centerY, restDistance * 2
+            );
+            gradient.addColorStop(0, `rgba(${brightness},${brightness},${brightness},0.9)`);
+            gradient.addColorStop(1, `rgba(${brightness - 20},${brightness - 20},${brightness - 20},0.85)`);
+
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            ctx.strokeStyle = "rgba(255,255,255,0.06)";
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    const cloth = new Cloth();
+
+    // Variables para controlar la experiencia
+    let experienceStarted = false;
+
+    // Inicializar micrófono
+    function initMicrophone() {
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: false
+        })
+        .then(function(stream) {
+          microphone = audioContext.createMediaStreamSource(stream);
+          analyzer = audioContext.createAnalyser();
+          analyzer.fftSize = 256;
+          microphone.connect(analyzer);
+          dataArray = new Uint8Array(analyzer.frequencyBinCount);
+          micActive = true;
+
+          micButton.textContent = "Respiración activada";
+          volumeIndicator.classList.remove('hidden');
+        })
+        .catch(function(err) {
+          alert("No se pudo acceder al micrófono. Por favor, verifica los permisos.");
+          console.error(err);
+        });
+    }
+
+    // Inicializar audio respiracion.mp3
+    function initAudio() {
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      audioElement = new Audio("respiracion.mp3");
+      audioElement.loop = true;
+      audioElement.volume = 0.7; // Aumentar volumen
+      const source = audioContext.createMediaElementSource(audioElement);
+      audioAnalyser = audioContext.createAnalyser();
+      audioAnalyser.fftSize = 256;
+      source.connect(audioAnalyser);
+      source.connect(audioContext.destination);
+      audioDataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
+      audioElement.play();
+    }
+
+    // Función para obtener volumen combinado micrófono + audio
+    function getCombinedVolume() {
+      let micVolume = 0;
+      let audioVolume = 0;
+
+      if (analyzer && dataArray) {
+        analyzer.getByteFrequencyData(dataArray);
+        micVolume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+      }
+
+      if (audioAnalyser && audioDataArray) {
+        audioAnalyser.getByteFrequencyData(audioDataArray);
+        audioVolume = audioDataArray.reduce((a, b) => a + b, 0) / audioDataArray.length;
+      }
+
+      return (micVolume * 1.5 + audioVolume) / 2.5; // Aumentar sensibilidad del micrófono
+    }
+
+    // Actualizar fuerzas de viento según volumen y mouse
+    function updateForces() {
+      const volume = getCombinedVolume();
+      const speedFactor = volume / 128; // Ajusta sensibilidad
+
+      // Actualizar indicador visual
+      volumeLevel.style.width = `${Math.min(volume * 0.5, 100)}%`; // Escala ajustada
+
+      // Aplicar fuerzas más pronunciadas
+      cloth.applyWindForce(
+        mouseSpeedX * speedFactor * 0.8, // Aumentar factor
+        mouseSpeedY * speedFactor * 0.8 + (volume * 0.005) // Añadir componente vertical
+      );
+    }
+
+    // Evento para activar experiencia con cualquier interacción
+    function startExperience() {
+      if (experienceStarted) return;
+      experienceStarted = true;
+      initMicrophone();
+      initAudio();
+      volumeIndicator.classList.remove("hidden");
+    }
+    document.addEventListener("click", startExperience);
+    document.addEventListener("mousemove", startExperience);
+    document.addEventListener("wheel", startExperience);
+
+    // Controlar posición y velocidad del mouse
+    canvas.addEventListener("mousemove", e => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      mouseSpeedX = mouseX - prevMouseX;
+      mouseSpeedY = mouseY - prevMouseY;
+      prevMouseX = mouseX;
+      prevMouseY = mouseY;
+    });
+
+    // Efecto por clic sobre la tela para movimiento local
+    canvas.addEventListener("click", e => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      cloth.points.forEach(point => {
+        if (!point.pinned) {
+          const dx = point.x - clickX;
+          const dy = point.y - clickY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 100) {
+            point.vx += (Math.random() - 0.5) * 10;
+            point.vy += (Math.random() - 0.5) * 10;
+          }
+        }
+      });
+    });
+
+    // Botón para activar respiración (opcional, puede usarse para iniciar también)
+    micButton.addEventListener("click", () => {
+      startExperience();
+      breathSound.play();
+    });
+
+    // Animación principal
+    let lastTime = Date.now();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const now = Date.now();
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+
+      // Aplicar fuerza por movimiento del mouse suavizada
+      let mouseForceX = mouseSpeedX * 0.005;
+      let mouseForceY = mouseSpeedY * 0.005;
+      cloth.applyWindForce(mouseForceX, mouseForceY);
+
+      // Aplicar fuerza por volumen combinado mic + audio
+      updateForces();
+
+      cloth.update(dt);
+      cloth.draw();
+    }
+
+    animate();
+  </script>
+</body>
+
+</html>
