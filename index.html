@@ -49,154 +49,156 @@
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    // Ajustar el canvas si cambia el tamaño de la ventana
+    // Ajuste del canvas cuando cambia el tamaño de la ventana
     window.addEventListener('resize', () => {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
     });
 
-    // Definición de los estados de audio en orden secuencial
-    const audioSequence = [
-        'agitacion', 
-        'incertidumbre', 
-        'atencion', 
-        'presencia', 
-        'suspension', 
-        'desconexion'
-    ];
-
-    // Configuración de los archivos de audio con Howler.js
+    // Configuración de audio (Howler.js)
     const audios = {
-        suspension: new Howl({ src: ['suspension.mp3'], loop: true, volume: 0 }),
-        presencia: new Howl({ src: ['presencia.mp3'], loop: true, volume: 0 }),
-        atencion: new Howl({ src: ['atencion.mp3'], loop: true, volume: 0 }),
-        incertidumbre: new Howl({ src: ['incertidumbre.mp3'], loop: true, volume: 0 }),
         agitacion: new Howl({ src: ['agitacion.mp3'], loop: true, volume: 0 }),
+        incertidumbre: new Howl({ src: ['incertidumbre.mp3'], loop: true, volume: 0 }),
+        atencion: new Howl({ src: ['atencion.mp3'], loop: true, volume: 0 }),
+        presencia: new Howl({ src: ['presencia.mp3'], loop: true, volume: 0 }),
+        suspension: new Howl({ src: ['suspension.mp3'], loop: true, volume: 0 }),
         desconexion: new Howl({ src: ['desconexion.mp3'], loop: true, volume: 0 })
     };
 
-    // Volúmenes para cada estado de audio
+    // Secuencia definida de reproducción
+    const audioSequence = ['agitacion', 'incertidumbre', 'atencion', 'presencia', 'suspension', 'desconexion'];
+    let currentAudioIndex = 5; // Empezamos con desconexion (índice 5)
+    let currentAudio = null;
+    let isFirstInteraction = true;
+    let hasInteracted = false;
+
+    // Variables para el control del mouse
+    let lastPos = { x: 0, y: 0 };
+    let lastTime = Date.now();
+    let mouseStillTime = Date.now();
+    let mouseSpeed = 0;
+    let mouseInCanvas = false;
+
+    // Variables para el suavizado de la transición de audio
+    const transitionDuration = 2500; // Duración de la transición en milisegundos
     const audioVolume = {
-        suspension: 0.6,
-        presencia: 0.5,
-        atencion: 0.4,
-        incertidumbre: 0.3,
-        agitacion: 0.7,
-        desconexion: 0.2
+        agitacion: 0.45,
+        incertidumbre: 0.32,
+        atencion: 0.22,
+        presencia: 0.12,
+        suspension: 0.03,
+        desconexion: 0.1 // Un poco de volumen para que sea audible
     };
 
-    // Variables de control
-    let currentAudioState = 'desconexion'; // Iniciar con desconexion
-    let currentAudio = audios[currentAudioState];
-    let lastPos = { x: 0, y: 0 };
-    let lastInteractionTime = Date.now();
-    let hasInteracted = false;
-    let currentAudioIndex = 5; // Índice para desconexion
+    // Constantes para la simulación
+    const stillnessThreshold = 3000; // Tiempo de inactividad para cambiar el audio (ms)
+    const baseWindForce = 0.001; // Fuerza base del viento (suave respiración)
+    const volumeFactor = 20; // Sensibilidad al volumen para el movimiento de la tela
 
-    // Duración de la transición entre audios
-    const transitionDuration = 2000; // ms
+    // Función para reproducir el siguiente audio en la secuencia
+    function playNextInSequence(direction = 1) {
+        currentAudioIndex = (currentAudioIndex + direction + audioSequence.length) % audioSequence.length;
+        const audioName = audioSequence[currentAudioIndex];
+        startAudioTransition(audioName);
+    }
 
-    // Tiempo de inactividad para volver a desconexion
-    const inactivityThreshold = 3000; // ms
-
-    // Función para cambiar de estado de audio
-    function changeAudioState(newState) {
-        if (currentAudioState === newState) return;
-
-        console.log(`Cambiando de ${currentAudioState} a ${newState}`);
+    // Función para seleccionar el audio basado en la interacción
+    function selectAudioBasedOnInteraction() {
+        if (!mouseInCanvas || Date.now() - mouseStillTime > 8000) {
+            // Si el mouse no está en el canvas o está inmóvil por mucho tiempo
+            return 'desconexion';
+        }
         
-        // Bajar volumen del audio actual
-        if (currentAudio) {
+        if (mouseSpeed > 0.35) {
+            return 'agitacion';
+        } else if (mouseSpeed > 0.15) {
+            return 'incertidumbre';
+        } else if (mouseSpeed > 0.05) {
+            return 'atencion';
+        } else if (mouseSpeed > 0.01) {
+            return 'presencia';
+        } else if (Date.now() - mouseStillTime > stillnessThreshold) {
+            return 'suspension';
+        } else {
+            return audioSequence[currentAudioIndex]; // Mantener el audio actual
+        }
+    }
+
+    // Función para activar la transición de audio
+    function startAudioTransition(audioName) {
+        if (currentAudio && currentAudio.playing()) {
             currentAudio.fade(currentAudio.volume(), 0, transitionDuration);
+            
+            // Programar la detención después de fundirse a cero
             setTimeout(() => {
-                if (currentAudio !== audios[newState]) {
-                    currentAudio.pause();
+                if (currentAudio) {
+                    currentAudio.stop();
                 }
             }, transitionDuration);
         }
-
-        // Actualizar estado y audio actual
-        currentAudioState = newState;
-        currentAudio = audios[newState];
         
-        // Encontrar índice del nuevo estado en la secuencia
-        currentAudioIndex = audioSequence.indexOf(newState);
+        const targetAudio = audios[audioName];
+        targetAudio.volume(0);
+        targetAudio.play();
+        targetAudio.fade(0, audioVolume[audioName], transitionDuration);
         
-        // Iniciar reproducción y subir volumen
-        if (!currentAudio.playing()) {
-            currentAudio.play();
-        }
-        currentAudio.fade(0, audioVolume[newState], transitionDuration);
+        currentAudio = targetAudio;
+        currentAudioIndex = audioSequence.indexOf(audioName);
     }
 
-    // Función para procesar el movimiento del ratón
-    function handleMouseMovement(e) {
-        const now = Date.now();
-        
-        // Marcar como interactuado
+    // Detectar movimiento del mouse
+    canvas.addEventListener('mousemove', (e) => {
         if (!hasInteracted) {
             hasInteracted = true;
-            changeAudioState('agitacion'); // Comienza con agitación al interactuar
+            startAudioTransition('desconexion');
         }
         
-        // Actualizar tiempo de última interacción
-        lastInteractionTime = now;
-        
-        // Calcular velocidad del movimiento
+        const now = Date.now();
         const dx = e.clientX - lastPos.x;
         const dy = e.clientY - lastPos.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        const timeDelta = now - lastTime;
         
-        // Actualizar posición
+        // Calcular velocidad con suavizado
+        if (timeDelta > 0) {
+            const instantSpeed = Math.sqrt(dx * dx + dy * dy) / timeDelta;
+            mouseSpeed = mouseSpeed * 0.9 + instantSpeed * 0.1; // Suavizado
+        }
+        
+        // Actualizar posición y tiempo
         lastPos = { x: e.clientX, y: e.clientY };
+        lastTime = now;
         
-        // Determinar estado de audio basado en la velocidad
-        if (distance > 40) {
-            changeAudioState('agitacion');
-        } else if (distance > 20) {
-            changeAudioState('incertidumbre');
-        } else if (distance > 5) {
-            changeAudioState('atencion');
-        } else if (distance > 0) {
-            changeAudioState('presencia');
-        } else {
-            // Si no hay movimiento pero hay interacción reciente, ir a suspensión
-            const timeSinceLastMovement = now - lastInteractionTime;
-            if (timeSinceLastMovement < 1000) {
-                changeAudioState('suspension');
-            }
+        // Resetear contador de inactividad
+        if (mouseSpeed > 0.005) {
+            mouseStillTime = now;
         }
-    }
-
-    // Detección de inactividad para pasar a desconexión
-    function checkInactivity() {
-        const now = Date.now();
-        const timeSinceLastInteraction = now - lastInteractionTime;
         
-        if (hasInteracted && timeSinceLastInteraction > inactivityThreshold) {
-            changeAudioState('desconexion');
+        // Seleccionar audio basado en la interacción
+        const audioName = selectAudioBasedOnInteraction();
+        if (audioName && audioSequence[currentAudioIndex] !== audioName) {
+            startAudioTransition(audioName);
         }
-    }
+    });
 
-    // Evento para detectar si el cursor sale del canvas
+    // Detectar cuando el mouse entra y sale del canvas
+    canvas.addEventListener('mouseenter', () => {
+        mouseInCanvas = true;
+        if (!hasInteracted) {
+            hasInteracted = true;
+            startAudioTransition('desconexion');
+        }
+    });
+
     canvas.addEventListener('mouseleave', () => {
-        changeAudioState('desconexion');
+        mouseInCanvas = false;
+        startAudioTransition('desconexion');
     });
 
-    // Evento para detectar movimiento del cursor
-    canvas.addEventListener('mousemove', handleMouseMovement);
-
-    // Evento para detectar cuando el cursor está en el canvas pero quieto
-    canvas.addEventListener('mouseenter', (e) => {
-        lastPos = { x: e.clientX, y: e.clientY };
-        lastInteractionTime = Date.now();
-    });
-
-    // Evento para click, que simula una interacción más intensa
-    canvas.addEventListener('click', () => {
-        if (currentAudioState !== 'agitacion') {
-            changeAudioState('agitacion');
-        }
+    // Iniciar con el audio de desconexión
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            startAudioTransition('desconexion');
+        }, 500);
     });
 
     // Simulación de tela
@@ -279,9 +281,9 @@
 
         update(dt) {
             // Constantes físicas
-            const GRAVITY = 0.0981 * dt;
+            const GRAVITY = 0.01 * dt;
             const DAMPING = 0.98;
-            const DRAG = 1 - 0.01;
+            const DRAG = 1 - 0.02;
 
             // Aplicar fuerzas
             for (let i = 0; i < this.points.length; i++) {
@@ -290,7 +292,7 @@
                     // Acumular fuerzas
                     point.vy += GRAVITY;
 
-                    // Aplicar un pequeño desplazamiento hacia el centro
+                    // Aplicar una leve atracción hacia el centro para mantener la tela visible
                     const centerX = canvas.width / 2;
                     const centerY = canvas.height / 2;
                     const toCenterX = (centerX - point.x) * 0.0001;
@@ -315,7 +317,7 @@
                 }
             }
 
-            // Resolver restricciones
+            // Resolver restricciones para mantener la estructura de la tela
             const iterations = 15;
             for (let i = 0; i < iterations; i++) {
                 for (let j = 0; j < this.constraints.length; j++) {
@@ -329,16 +331,17 @@
                     const currentDistance = Math.sqrt(dx * dx + dy * dy);
 
                     if (currentDistance > 0) {
-                        // Calcular dirección...
+                        // Calcular dirección y corrección
                         const diff = (constraint.distance - currentDistance) / currentDistance;
 
-                        // Distribuir corrección
+                        // Distribuir corrección según si los puntos están fijados o no
                         const percent1 = p1.pinned ? 0 : 0.5;
                         const percent2 = p2.pinned ? 0 : 0.5;
 
                         const offsetX = dx * diff;
                         const offsetY = dy * diff;
 
+                        // Aplicar corrección
                         p1.x -= offsetX * percent1;
                         p1.y -= offsetY * percent1;
 
@@ -349,46 +352,27 @@
             }
         }
 
-        // Aplicar fuerza de viento con base en el volumen de audio
-        applyWindForce(dt) {
-            // Base de movimiento continuo (respiración)
-            const time = Date.now() / 1000;
-            const baseWindX = Math.sin(time) * 0.001;
-            const baseWindY = Math.cos(time * 0.7) * 0.0005;
-            
-            // Amplificación basada en volumen de audio
-            let audioAmplification = 1;
-            
-            if (currentAudio) {
-                // Factor de amplificación basado en el estado de audio actual
-                const stateFactor = {
-                    'agitacion': 3.0,
-                    'incertidumbre': 2.0,
-                    'atencion': 1.5,
-                    'presencia': 1.0,
-                    'suspension': 0.5,
-                    'desconexion': 0.2
-                };
-                
-                audioAmplification = currentAudio.volume() * stateFactor[currentAudioState];
-            }
+        // Aplicar fuerza de viento (movimiento constante + respuesta al audio)
+        applyWindForce(forceX, forceY) {
+            // Añadir oscilación natural para simular "respiración"
+            const time = Date.now() * 0.001;
+            const breathingForce = Math.sin(time * 0.5) * 0.002;
             
             for (let i = 0; i < this.points.length; i++) {
                 const point = this.points[i];
                 if (!point.pinned) {
-                    // Efecto de respiración base
-                    const breathingFactor = Math.sin(time + i * 0.1) * 0.0005;
+                    // Añadir turbulencia aleatoria suave
+                    let randomX = (Math.random() - 0.5) * 0.02;
+                    let randomY = (Math.random() - 0.5) * 0.01;
                     
-                    // Turbulencia aleatoria, más intensa con audio más fuerte
-                    const turbulence = (Math.random() - 0.5) * 0.01 * audioAmplification;
+                    // Alternar dirección para crear movimiento más natural
+                    if (i % 4 === 0) {
+                        randomX *= -1;
+                    }
                     
-                    // Crear un patrón de ondas para el movimiento
-                    const waveX = Math.sin(time + point.originalY * 0.01) * 0.003 * audioAmplification;
-                    const waveY = Math.cos(time + point.originalX * 0.01) * 0.003 * audioAmplification;
-                    
-                    // Aplicar fuerzas
-                    point.vx += baseWindX + waveX + turbulence + breathingFactor;
-                    point.vy += baseWindY + waveY + turbulence + breathingFactor;
+                    // Combinar fuerzas: base + respiración + audio + aleatoria
+                    point.vx += forceX + breathingForce + randomX;
+                    point.vy += forceY + randomY;
                 }
             }
         }
@@ -398,6 +382,7 @@
             ctx.fillStyle = "#000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // Dibujar cada celda de la tela
             for (let y = 0; y < numPointsY; y++) {
                 for (let x = 0; x < numPointsX; x++) {
                     const p1 = this.getPoint(x, y);
@@ -405,50 +390,53 @@
                     const p3 = this.getPoint(x + 1, y + 1);
                     const p4 = this.getPoint(x, y + 1);
 
+                    // Calcular el centro para el gradiente
                     const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
                     const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
 
+                    // Calcular normal para iluminación
                     const nx = (p3.y - p1.y);
                     const ny = -(p3.x - p1.x);
                     const norm = Math.sqrt(nx * nx + ny * ny);
-
-                    const normalX = nx / norm;
-                    const normalY = ny / norm;
-
-                    const lightX = 0.5;
-                    const lightY = -1;
-                    const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
-
-                    // Brillo basado en audio
-                    let brightness = 225;
-                    if (currentAudio) {
-                        // Añadir un poco de variación basada en el volumen
-                        brightness = 200 + (currentAudio.volume() * 55);
-                    }
                     
-                    const finalBrightness = Math.floor(brightness * (lightIntensity * 0.3 + 0.7));
+                    if (norm > 0) {
+                        const normalX = nx / norm;
+                        const normalY = ny / norm;
 
-                    ctx.beginPath();
-                    ctx.moveTo(p1.x, p1.y);
-                    ctx.lineTo(p2.x, p2.y);
-                    ctx.lineTo(p3.x, p3.y);
-                    ctx.lineTo(p4.x, p4.y);
-                    ctx.closePath();
+                        // Iluminación simple
+                        const lightX = 0.5;
+                        const lightY = -1;
+                        const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
 
-                    const gradient = ctx.createRadialGradient(
-                        centerX, centerY, 0,
-                        centerX, centerY, restDistance * 2
-                    );
+                        // Ajustar brillo manteniendo tonos blancos
+                        const brightness = Math.floor(220 + lightIntensity * 35);
 
-                    gradient.addColorStop(0, `rgba(${finalBrightness}, ${finalBrightness}, ${finalBrightness}, 0.9)`);
-                    gradient.addColorStop(1, `rgba(${finalBrightness-20}, ${finalBrightness-20}, ${finalBrightness-20}, 0.85)`);
+                        // Dibujar la celda
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.lineTo(p3.x, p3.y);
+                        ctx.lineTo(p4.x, p4.y);
+                        ctx.closePath();
 
-                    ctx.fillStyle = gradient;
-                    ctx.fill();
+                        // Crear gradiente para dar profundidad
+                        const gradient = ctx.createRadialGradient(
+                            centerX, centerY, 0,
+                            centerX, centerY, restDistance * 1.5
+                        );
 
-                    ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
-                    ctx.lineWidth = 0.5;
-                    ctx.stroke();
+                        // Color uniforme blanco con variación sutil de brillo
+                        gradient.addColorStop(0, `rgba(${brightness}, ${brightness}, ${brightness}, 0.95)`);
+                        gradient.addColorStop(1, `rgba(${brightness-15}, ${brightness-15}, ${brightness-15}, 0.9)`);
+
+                        ctx.fillStyle = gradient;
+                        ctx.fill();
+
+                        // Líneas sutiles para definir la estructura
+                        ctx.strokeStyle = `rgba(255, 255, 255, 0.05)`;
+                        ctx.lineWidth = 0.4;
+                        ctx.stroke();
+                    }
                 }
             }
         }
@@ -457,31 +445,31 @@
     // Crear tela
     const cloth = new Cloth();
 
-    // Iniciar la simulación
+    // Bucle de animación
     function animate() {
         const now = Date.now();
-        const dt = (now - (animate.lastTime || now)) / 16.66;
+        const dt = Math.min((now - (animate.lastTime || now)) / 16.66, 2); // Limitar dt para estabilidad
         animate.lastTime = now;
 
-        // Verificar inactividad
-        checkInactivity();
+        // Fuerza base del viento (siempre presente para la "respiración")
+        let windForceX = baseWindForce;
+        
+        // Aumentar fuerza basada en el volumen del audio actual
+        if (currentAudio && currentAudio.playing()) {
+            windForceX += currentAudio.volume() * volumeFactor;
+        }
 
-        // Aplicar fuerzas y actualizar la simulación
-        cloth.applyWindForce(dt);
+        // Aplicar fuerzas, actualizar física y dibujar
+        cloth.applyWindForce(windForceX, 0);
         cloth.update(dt);
         cloth.draw();
 
+        // Continuar animación
         requestAnimationFrame(animate);
     }
 
-    // Iniciar audio de desconexión y animación
-    function init() {
-        changeAudioState('desconexion');
-        animate();
-    }
-
-    // Iniciar cuando todo esté cargado
-    window.addEventListener('load', init);
+    // Iniciar la simulación
+    animate();
 </script>
 </body>
 </html>
