@@ -135,6 +135,7 @@
     let currentAudio = null;
     let isFirstInteraction = true;
     let hasInteracted = false;
+    let forcedSequentialPlay = false; // Indicador para control de secuencia estricto
     
     // Estado actual del sistema
     let systemState = {
@@ -161,6 +162,10 @@
         suspension: 0.3,
         desconexion: 0.2        // Algo de volumen para asegurar que sea audible
     };
+    
+    // Tiempo mínimo para reproducir cada audio antes de cambiar
+    const minPlayDuration = 5000; // 5 segundos mínimo para cada audio
+    let lastAudioChangeTime = Date.now();
 
     // Constantes para la simulación
     const stillnessThreshold = 3000; // Tiempo de inactividad para cambiar el audio (ms)
@@ -168,19 +173,33 @@
     const volumeFactor = 25;       // Mayor sensibilidad al volumen para el movimiento de la tela
 
     // Función para reproducir el siguiente audio en la secuencia
-    function playNextInSequence(direction = 1) {
-        currentAudioIndex = (currentAudioIndex + direction + audioSequence.length) % audioSequence.length;
+    function playNextInSequence() {
+        // Avanzar al siguiente audio en la secuencia
+        currentAudioIndex = (currentAudioIndex + 1) % audioSequence.length;
         const audioName = audioSequence[currentAudioIndex];
         startAudioTransition(audioName);
+        lastAudioChangeTime = Date.now();
     }
 
     // Función para seleccionar el audio basado en la interacción
     function selectAudioBasedOnInteraction() {
-        if (!mouseInCanvas || Date.now() - mouseStillTime > 8000) {
-            // Si el mouse no está en el canvas o está inmóvil por mucho tiempo
-            return 'desconexion';
+        // Si estamos en modo secuencial forzado, respetamos el tiempo mínimo de reproducción
+        if (forcedSequentialPlay && Date.now() - lastAudioChangeTime < minPlayDuration) {
+            return audioSequence[currentAudioIndex]; // Mantener el audio actual
         }
         
+        // Si el mouse no está en el canvas o está inmóvil por mucho tiempo, volver a desconexión
+        if (!mouseInCanvas || Date.now() - mouseStillTime > 8000) {
+            return 'desconexion';
+        }
+
+        // Si estamos en modo secuencial forzado, ir al siguiente en la secuencia
+        if (forcedSequentialPlay) {
+            playNextInSequence();
+            return audioSequence[currentAudioIndex];
+        }
+        
+        // Modo basado en velocidad del mouse (comportamiento original)
         if (mouseSpeed > 0.35) {
             return 'agitacion';
         } else if (mouseSpeed > 0.15) {
@@ -232,6 +251,17 @@
             currentAudio = targetAudio;
             currentAudioIndex = audioSequence.indexOf(audioName);
             systemState.audioPlaying = true;
+            
+            // Si estamos en modo secuencial, programar el próximo cambio automático
+            if (forcedSequentialPlay && audioName !== 'desconexion') {
+                // Duración automática entre 10-15 segundos para cada audio
+                const autoDuration = minPlayDuration + Math.random() * 10000;
+                setTimeout(() => {
+                    if (forcedSequentialPlay && mouseInCanvas) {
+                        playNextInSequence();
+                    }
+                }, autoDuration);
+            }
         } catch (e) {
             logDebug(`Error al iniciar nuevo audio: ${e.message}`);
             systemState.audioPlaying = false;
@@ -244,6 +274,12 @@
             if (!hasInteracted) {
                 hasInteracted = true;
                 startAudioTransition('desconexion');
+                
+                // Tras la primera interacción, activar el modo de secuencia estricta
+                setTimeout(() => {
+                    forcedSequentialPlay = true;
+                    playNextInSequence(); // Comenzar la secuencia con agitación después de la desconexión inicial
+                }, 2000);
             }
             
             const now = Date.now();
@@ -267,10 +303,12 @@
                 mouseStillTime = now;
             }
             
-            // Seleccionar audio basado en la interacción
-            const audioName = selectAudioBasedOnInteraction();
-            if (audioName && audioSequence[currentAudioIndex] !== audioName) {
-                startAudioTransition(audioName);
+            // Si no estamos en modo de secuencia forzada, seleccionar audio basado en velocidad
+            if (!forcedSequentialPlay) {
+                const audioName = selectAudioBasedOnInteraction();
+                if (audioName && audioSequence[currentAudioIndex] !== audioName) {
+                    startAudioTransition(audioName);
+                }
             }
         } catch (e) {
             logDebug(`Error en evento mousemove: ${e.message}`);
@@ -284,6 +322,16 @@
         if (!hasInteracted) {
             hasInteracted = true;
             startAudioTransition('desconexion');
+            
+            // Tras la primera interacción, activar el modo de secuencia estricta
+            setTimeout(() => {
+                forcedSequentialPlay = true;
+                playNextInSequence(); // Comenzar la secuencia con agitación
+            }, 2000);
+        } else if (forcedSequentialPlay) {
+            // Si volvemos a entrar, continuar desde donde estábamos
+            const currentAudioName = audioSequence[currentAudioIndex];
+            startAudioTransition(currentAudioName);
         }
     });
 
@@ -472,6 +520,37 @@
                 const time = Date.now() * 0.001;
                 const breathingForce = Math.sin(time * 0.5) * 0.005; // Aumentado para asegurar movimiento visible
                 
+                // Añadir modulación basada en el audio actual
+                let audioModulation = 0;
+                if (currentAudio && typeof currentAudio.volume === 'function') {
+                    const volume = currentAudio.volume();
+                    if (typeof volume === 'number') {
+                        // Modular la fuerza del viento según el audio actual
+                        switch(audioSequence[currentAudioIndex]) {
+                            case 'agitacion':
+                                audioModulation = volume * 0.015; // Movimiento más fuerte
+                                break;
+                            case 'incertidumbre':
+                                audioModulation = volume * 0.012 * Math.sin(time * 2); // Movimiento ondulante
+                                break;
+                            case 'atencion':
+                                audioModulation = volume * 0.01 * Math.cos(time * 1.5); // Más suave
+                                break;
+                            case 'presencia':
+                                audioModulation = volume * 0.008; // Suave pero constante
+                                break;
+                            case 'suspension':
+                                audioModulation = volume * 0.006 * Math.sin(time * 0.8); // Muy lento
+                                break;
+                            case 'desconexion':
+                                audioModulation = volume * 0.003; // Mínimo movimiento
+                                break;
+                            default:
+                                audioModulation = volume * 0.005;
+                        }
+                    }
+                }
+                
                 for (let i = 0; i < this.points.length; i++) {
                     const point = this.points[i];
                     if (!point.pinned) {
@@ -485,7 +564,7 @@
                         }
                         
                         // Combinar fuerzas: base + respiración + audio + aleatoria
-                        point.vx += forceX + breathingForce + randomX;
+                        point.vx += forceX + breathingForce + audioModulation + randomX;
                         point.vy += forceY + randomY;
                     }
                 }
@@ -582,7 +661,33 @@
             if (currentAudio && typeof currentAudio.volume === 'function') {
                 const volume = currentAudio.volume();
                 if (typeof volume === 'number') {
-                    windForceX += volume * volumeFactor;
+                    // Ajustar el factor según el tipo de audio
+                    let currentFactor = volumeFactor;
+                    const audioName = audioSequence[currentAudioIndex];
+                    
+                    // Personalizar la respuesta de la tela según el audio
+                    switch(audioName) {
+                        case 'agitacion':
+                            currentFactor = volumeFactor * 1.5; // Más sensible
+                            break;
+                        case 'incertidumbre':
+                            currentFactor = volumeFactor * 1.2;
+                            break;
+                        case 'atencion':
+                            currentFactor = volumeFactor * 1.0;
+                            break;
+                        case 'presencia':
+                            currentFactor = volumeFactor * 0.8;
+                            break;
+                        case 'suspension':
+                            currentFactor = volumeFactor * 0.5;
+                            break;
+                        case 'desconexion':
+                            currentFactor = volumeFactor * 0.3; // Menos sensible
+                            break;
+                    }
+                    
+                    windForceX += volume * currentFactor;
                 }
             } 
             
@@ -617,6 +722,13 @@
         logDebug("Primer clic detectado, iniciando audio");
         startAudioTransition('desconexion');
         hasInteracted = true;
+        
+        // Tras la primera interacción, activar el modo de secuencia estricta
+        setTimeout(() => {
+            forcedSequentialPlay = true;
+            playNextInSequence(); // Comenzar la secuencia con agitación
+        }, 2000);
+        
         document.removeEventListener('click', initialClick);
     });
 
