@@ -100,11 +100,31 @@
                 audioErrorCount++;
                 logDebug(`Error al cargar ${file}: ${err}`);
                 
-                // Si hay error al cargar, crear un reemplazo silencioso
-                audios[name] = createSilentAudio();
+                // Si hay error al cargar, intentar con un audio similar
+                const alternativeAudio = getAlternativeAudio(name);
+                if (alternativeAudio) {
+                    audios[name] = audios[alternativeAudio];
+                    logDebug(`Usando audio alternativo: ${alternativeAudio} para ${name}`);
+                } else {
+                    // Si no hay alternativa, usar un audio silencioso
+                    audios[name] = createSilentAudio();
+                }
             }
         });
     });
+
+    // Función para obtener un audio alternativo similar
+    function getAlternativeAudio(failedAudioName) {
+        switch (failedAudioName) {
+            case 'agitacion': return 'incertidumbre';
+            case 'incertidumbre': return 'atencion';
+            case 'atencion': return 'presencia';
+            case 'presencia': return 'suspension';
+            case 'suspension': return 'desconexion';
+            case 'desconexion': return 'agitacion';
+            default: return null;
+        }
+    }
 
     // Crea un reemplazo silencioso para audios que no se pueden cargar
     function createSilentAudio() {
@@ -436,304 +456,169 @@
             }
         }
 
-        update(dt) {
-            try {
-                // Constantes físicas
-                const GRAVITY = 0.01 * dt;
-                const DAMPING = 0.98;
-                const DRAG = 1 - 0.02;
+        update(windX, windY) {
+            this.points.forEach(point => {
+                if (!point.pinned) {
+                    const forceX = windX;
+                    const forceY = windY + 0.5 * 0.098;
 
-                // Aplicar fuerzas
-                for (let i = 0; i < this.points.length; i++) {
-                    const point = this.points[i];
-                    if (!point.pinned) {
-                        // Acumular fuerzas
-                        point.vy += GRAVITY;
+                    point.vx += forceX / point.mass;
+                    point.vy += forceY / point.mass;
 
-                        // Aplicar una leve atracción hacia el centro para mantener la tela visible
-                        const centerX = canvas.width / 2;
-                        const centerY = canvas.height / 2;
-                        const toCenterX = (centerX - point.x) * 0.0001;
-                        const toCenterY = (centerY - point.y) * 0.0001;
-                        point.vx += toCenterX;
-                        point.vy += toCenterY;
+                    point.vx *= 0.97;
+                    point.vy *= 0.97;
 
-                        // Amortiguación y arrastre
-                        point.vx *= DRAG;
-                        point.vy *= DRAG;
+                    point.x += point.vx;
+                    point.y += point.vy;
 
-                        // Integración de Verlet
-                        const prevX = point.x;
-                        const prevY = point.y;
+                    const dx = point.x - point.originalX;
+                    const dy = point.y - point.originalY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
 
-                        point.x += point.vx;
-                        point.y += point.vy;
-
-                        // Actualizar velocidades con amortiguación
-                        point.vx = (point.x - prevX) * DAMPING;
-                        point.vy = (point.y - prevY) * DAMPING;
+                    if (distance > 200) {
+                        const angle = Math.atan2(dy, dx);
+                        point.x = point.originalX + 200 * Math.cos(angle);
+                        point.y = point.originalY + 200 * Math.sin(angle);
                     }
                 }
+            });
 
-                // Resolver restricciones para mantener la estructura de la tela
-                const iterations = 15;
-                for (let i = 0; i < iterations; i++) {
-                    for (let j = 0; j < this.constraints.length; j++) {
-                        const constraint = this.constraints[j];
-                        const p1 = constraint.p1;
-                        const p2 = constraint.p2;
+            for (let i = 0; i < 10; i++) {
+                this.constraints.forEach(constraint => {
+                    const dx = constraint.p2.x - constraint.p1.x;
+                    const dy = constraint.p2.y - constraint.p1.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const difference = distance - constraint.distance;
+                    const adjustX = difference * dx / distance * 0.5;
+                    const adjustY = difference * dy / distance * 0.5;
 
-                        // Cálculo de la distancia actual
-                        const dx = p2.x - p1.x;
-                        const dy = p2.y - p1.y;
-                        const currentDistance = Math.sqrt(dx * dx + dy * dy);
-
-                        if (currentDistance > 0) {
-                            // Calcular dirección y corrección
-                            const diff = (constraint.distance - currentDistance) / currentDistance;
-
-                            // Distribuir corrección según si los puntos están fijados o no
-                            const percent1 = p1.pinned ? 0 : 0.5;
-                            const percent2 = p2.pinned ? 0 : 0.5;
-
-                            const offsetX = dx * diff;
-                            const offsetY = dy * diff;
-
-                            // Aplicar corrección
-                            p1.x -= offsetX * percent1;
-                            p1.y -= offsetY * percent1;
-
-                            p2.x += offsetX * percent2;
-                            p2.y += offsetY * percent2;
-                        }
+                    if (!constraint.p1.pinned) {
+                        constraint.p1.x -= adjustX;
+                        constraint.p1.y -= adjustY;
                     }
-                }
-            } catch (e) {
-                logDebug(`Error en update de cloth: ${e.message}`);
-            }
-        }
-
-        // Aplicar fuerza de viento (movimiento constante + respuesta al audio)
-        applyWindForce(forceX, forceY) {
-            try {
-                // Añadir oscilación natural para simular "respiración"
-                const time = Date.now() * 0.001;
-                const breathingForce = Math.sin(time * 0.5) * 0.005; // Aumentado para asegurar movimiento visible
-                
-                // Añadir modulación basada en el audio actual
-                let audioModulation = 0;
-                if (currentAudio && typeof currentAudio.volume === 'function') {
-                    const volume = currentAudio.volume();
-                    if (typeof volume === 'number') {
-                        // Modular la fuerza del viento según el audio actual
-                        switch(audioSequence[currentAudioIndex]) {
-                            case 'agitacion':
-                                audioModulation = volume * 0.015; // Movimiento más fuerte
-                                break;
-                            case 'incertidumbre':
-                                audioModulation = volume * 0.012 * Math.sin(time * 2); // Movimiento ondulante
-                                break;
-                            case 'atencion':
-                                audioModulation = volume * 0.01 * Math.cos(time * 1.5); // Más suave
-                                break;
-                            case 'presencia':
-                                audioModulation = volume * 0.008; // Suave pero constante
-                                break;
-                            case 'suspension':
-                                audioModulation = volume * 0.006 * Math.sin(time * 0.8); // Muy lento
-                                break;
-                            case 'desconexion':
-                                audioModulation = volume * 0.003; // Mínimo movimiento
-                                break;
-                            default:
-                                audioModulation = volume * 0.005;
-                        }
+                    if (!constraint.p2.pinned) {
+                        constraint.p2.x += adjustX;
+                        constraint.p2.y += adjustY;
                     }
-                }
-                
-                for (let i = 0; i < this.points.length; i++) {
-                    const point = this.points[i];
-                    if (!point.pinned) {
-                        // Añadir turbulencia aleatoria suave pero más notoria
-                        let randomX = (Math.random() - 0.5) * 0.04;
-                        let randomY = (Math.random() - 0.5) * 0.02;
-                        
-                        // Alternar dirección para crear movimiento más natural
-                        if (i % 4 === 0) {
-                            randomX *= -1;
-                        }
-                        
-                        // Combinar fuerzas: base + respiración + audio + aleatoria
-                        point.vx += forceX + breathingForce + audioModulation + randomX;
-                        point.vy += forceY + randomY;
-                    }
-                }
-            } catch (e) {
-                logDebug(`Error en applyWindForce: ${e.message}`);
+                });
             }
         }
 
         draw() {
-            try {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = "#000";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath();
+            for (let y = 0; y < numPointsY; y++) {
+                for (let x = 0; x < numPointsX; x++) {
+                    const p1 = this.getPoint(x, y);
+                    const p2 = this.getPoint(x + 1, y);
+                    const p3 = this.getPoint(x + 1, y + 1);
+                    const p4 = this.getPoint(x, y + 1);
 
-                // Dibujar cada celda de la tela
-                for (let y = 0; y < numPointsY; y++) {
-                    for (let x = 0; x < numPointsX; x++) {
-                        const p1 = this.getPoint(x, y);
-                        const p2 = this.getPoint(x + 1, y);
-                        const p3 = this.getPoint(x + 1, y + 1);
-                        const p4 = this.getPoint(x, y + 1);
-
-                        // Calcular el centro para el gradiente
-                        const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
-                        const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
-
-                        // Calcular normal para iluminación
-                        const nx = (p3.y - p1.y);
-                        const ny = -(p3.x - p1.x);
-                        const norm = Math.sqrt(nx * nx + ny * ny);
-                        
-                        if (norm > 0) {
-                            const normalX = nx / norm;
-                            const normalY = ny / norm;
-
-                            // Iluminación simple
-                            const lightX = 0.5;
-                            const lightY = -1;
-                            const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
-
-                            // Ajustar brillo manteniendo tonos blancos
-                            const brightness = Math.floor(220 + lightIntensity * 35);
-
-                            // Dibujar la celda
-                            ctx.beginPath();
-                            ctx.moveTo(p1.x, p1.y);
-                            ctx.lineTo(p2.x, p2.y);
-                            ctx.lineTo(p3.x, p3.y);
-                            ctx.lineTo(p4.x, p4.y);
-                            ctx.closePath();
-
-                            // Crear gradiente para dar profundidad
-                            const gradient = ctx.createRadialGradient(
-                                centerX, centerY, 0,
-                                centerX, centerY, restDistance * 1.5
-                            );
-
-                            // Color uniforme blanco con variación sutil de brillo
-                            gradient.addColorStop(0, `rgba(${brightness}, ${brightness}, ${brightness}, 0.95)`);
-                            gradient.addColorStop(1, `rgba(${brightness-15}, ${brightness-15}, ${brightness-15}, 0.9)`);
-
-                            ctx.fillStyle = gradient;
-                            ctx.fill();
-
-                            // Líneas sutiles para definir la estructura
-                            ctx.strokeStyle = `rgba(255, 255, 255, 0.05)`;
-                            ctx.lineWidth = 0.4;
-                            ctx.stroke();
-                        }
-                    }
+                    ctx.moveTo(p1.x, p1.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.lineTo(p3.x, p3.y);
+                    ctx.lineTo(p4.x, p4.y);
+                    ctx.lineTo(p1.x, p1.y);
                 }
-            } catch (e) {
-                logDebug(`Error en draw: ${e.message}`);
             }
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
         }
     }
 
-    // Crear tela
     const cloth = new Cloth();
+
+    // Adaptación para dispositivos táctiles
+    let touchX = null;
+    let touchY = null;
+    let lastTouchTime = 0;
+    let touchSpeed = 0;
+
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        touchX = touch.clientX;
+        touchY = touch.clientY;
+        lastPos = { x: touchX, y: touchY };
+        lastTime = Date.now();
+        mouseInCanvas = true;
+        systemState.mouseInCanvas = true;
+
+        if (!hasInteracted) {
+            hasInteracted = true;
+            startAudioTransition('desconexion');
+
+            // Tras la primera interacción, activar el modo de secuencia estricta
+            setTimeout(() => {
+                forcedSequentialPlay = true;
+                playNextInSequence(); // Comenzar la secuencia con agitación
+            }, 2000);
+        } else if (forcedSequentialPlay) {
+            // Si volvemos a entrar, continuar desde donde estábamos
+            const currentAudioName = audioSequence[currentAudioIndex];
+            startAudioTransition(currentAudioName);
+        }
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const now = Date.now();
+        const dx = touch.clientX - lastPos.x;
+        const dy = touch.clientY - lastPos.y;
+        const timeDelta = now - lastTime;
+
+        // Calcular velocidad con suavizado
+        if (timeDelta > 0) {
+            const instantSpeed = Math.sqrt(dx * dx + dy * dy) / timeDelta;
+            touchSpeed = touchSpeed * 0.9 + instantSpeed * 0.1; // Suavizado
+            mouseSpeed = touchSpeed;
+            systemState.mouseSpeed = touchSpeed;
+        }
+
+        // Actualizar posición y tiempo
+        lastPos = { x: touch.clientX, y: touch.clientY };
+        lastTime = now;
+        mouseStillTime = now;
+
+        // Si no estamos en modo de secuencia forzada, seleccionar audio basado en velocidad
+        if (!forcedSequentialPlay) {
+            const audioName = selectAudioBasedOnInteraction();
+            if (audioName && audioSequence[currentAudioIndex] !== audioName) {
+                startAudioTransition(audioName);
+            }
+        }
+    });
+
+    canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        mouseInCanvas = false;
+        systemState.mouseInCanvas = false;
+        startAudioTransition('desconexion');
+    });
+
+    // Ajustar la fuerza del viento basada en el volumen del audio
+    function getWindForce() {
+        let windForce = baseWindForce;
+        if (currentAudio && currentAudio.playing()) {
+            windForce += currentAudio.volume() * volumeFactor / 10000; // Dividir por 10000 para reducir la fuerza
+        }
+        return windForce;
+    }
 
     // Bucle de animación
     function animate() {
-        try {
-            const now = Date.now();
-            const dt = Math.min((now - (animate.lastTime || now)) / 16.66, 2); // Limitar dt para estabilidad
-            animate.lastTime = now;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Determinar la fuerza del viento:
-            
-            // 1. Fuerza base siempre presente (para la "respiración")
-            let windForceX = baseWindForce;
-            
-            // 2. Si hay audio, aumentar basado en el volumen
-            if (currentAudio && typeof currentAudio.volume === 'function') {
-                const volume = currentAudio.volume();
-                if (typeof volume === 'number') {
-                    // Ajustar el factor según el tipo de audio
-                    let currentFactor = volumeFactor;
-                    const audioName = audioSequence[currentAudioIndex];
-                    
-                    // Personalizar la respuesta de la tela según el audio
-                    switch(audioName) {
-                        case 'agitacion':
-                            currentFactor = volumeFactor * 1.5; // Más sensible
-                            break;
-                        case 'incertidumbre':
-                            currentFactor = volumeFactor * 1.2;
-                            break;
-                        case 'atencion':
-                            currentFactor = volumeFactor * 1.0;
-                            break;
-                        case 'presencia':
-                            currentFactor = volumeFactor * 0.8;
-                            break;
-                        case 'suspension':
-                            currentFactor = volumeFactor * 0.5;
-                            break;
-                        case 'desconexion':
-                            currentFactor = volumeFactor * 0.3; // Menos sensible
-                            break;
-                    }
-                    
-                    windForceX += volume * currentFactor;
-                }
-            } 
-            
-            // 3. Agregar fuerza adicional basada en mouse para asegurar movimiento
-            if (mouseSpeed > 0.01) {
-                windForceX += mouseSpeed * 0.1;
-            }
-            
-            // Asegurar un valor mínimo para tener movimiento
-            windForceX = Math.max(windForceX, 0.003);
+        // Obtener la fuerza del viento basada en el volumen del audio actual
+        const wind = getWindForce();
 
-            // Actualizar estado de debug
-            if (showDebug && now % 1000 < 50) {
-                logDebug(`Audio: ${systemState.currentAudioName}, Force: ${windForceX.toFixed(4)}`);
-            }
+        // Actualizar y dibujar la tela
+        cloth.update(wind, 0.1);
+        cloth.draw();
 
-            // Aplicar fuerzas, actualizar física y dibujar
-            cloth.applyWindForce(windForceX, 0);
-            cloth.update(dt);
-            cloth.draw();
-
-            // Continuar animación
-            requestAnimationFrame(animate);
-        } catch (e) {
-            logDebug(`Error en animate: ${e.message}`);
-            requestAnimationFrame(animate); // Continuar incluso si hay error
-        }
+        requestAnimationFrame(animate);
     }
 
-    // Intentar reproducir audio al primer clic/toque (necesario en algunos navegadores)
-    document.addEventListener('click', function initialClick() {
-        logDebug("Primer clic detectado, iniciando audio");
-        startAudioTransition('desconexion');
-        hasInteracted = true;
-        
-        // Tras la primera interacción, activar el modo de secuencia estricta
-        setTimeout(() => {
-            forcedSequentialPlay = true;
-            playNextInSequence(); // Comenzar la secuencia con agitación
-        }, 2000);
-        
-        document.removeEventListener('click', initialClick);
-    });
-
-    // Iniciar la simulación
-    logDebug("Iniciando simulación");
     animate();
 </script>
 </body>
