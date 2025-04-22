@@ -99,34 +99,13 @@
             onloaderror: function(id, err) {
                 audioErrorCount++;
                 logDebug(`Error al cargar ${file}: ${err}`);
-                
-                // Si hay error al cargar, intentar con un audio similar
-                const alternativeAudio = getAlternativeAudio(name);
-                if (alternativeAudio) {
-                    audios[name] = audios[alternativeAudio];
-                    logDebug(`Usando audio alternativo: ${alternativeAudio} para ${name}`);
-                } else {
-                    // Si no hay alternativa, usar un audio silencioso
-                    audios[name] = createSilentAudio();
-                }
+                // En caso de error, no hacer nada por ahora
+                audios[name] = createSilentAudio();
             }
         });
     });
 
-    // Función para obtener un audio alternativo similar
-    function getAlternativeAudio(failedAudioName) {
-        switch (failedAudioName) {
-            case 'agitacion': return 'incertidumbre';
-            case 'incertidumbre': return 'atencion';
-            case 'atencion': return 'presencia';
-            case 'presencia': return 'suspension';
-            case 'suspension': return 'desconexion';
-            case 'desconexion': return 'agitacion';
-            default: return null;
-        }
-    }
-
-    // Crea un reemplazo silencioso para audios que no se pueden cargar
+   // Crea un reemplazo silencioso para audios que no se pueden cargar
     function createSilentAudio() {
         return {
             play: function() { return this; },
@@ -605,22 +584,15 @@
         return windForce;
     }
 
-    let lastWindForce = 0; // Variable para almacenar la última fuerza del viento
-    const windSmoothingFactor = 0.1; // Factor de suavizado para la fuerza del viento
-
     // Bucle de animación
     function animate() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // Obtener la fuerza del viento basada en el volumen del audio actual
-        let windForce = getWindForce();
-
-        // Suavizar la transición de la fuerza del viento
-        windForce = lastWindForce * (1 - windSmoothingFactor) + windForce * windSmoothingFactor;
-        lastWindForce = windForce;
+        const wind = getWindForce();
 
         // Actualizar y dibujar la tela
-        cloth.update(windForce, 0.1);
+        cloth.update(wind, 0.1);
         cloth.draw();
 
         requestAnimationFrame(animate);
