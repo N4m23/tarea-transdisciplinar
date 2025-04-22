@@ -605,15 +605,22 @@
         return windForce;
     }
 
+    let lastWindForce = 0; // Variable para almacenar la última fuerza del viento
+    const windSmoothingFactor = 0.1; // Factor de suavizado para la fuerza del viento
+
     // Bucle de animación
     function animate() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // Obtener la fuerza del viento basada en el volumen del audio actual
-        const wind = getWindForce();
+        let windForce = getWindForce();
+
+        // Suavizar la transición de la fuerza del viento
+        windForce = lastWindForce * (1 - windSmoothingFactor) + windForce * windSmoothingFactor;
+        lastWindForce = windForce;
 
         // Actualizar y dibujar la tela
-        cloth.update(wind, 0.1);
+        cloth.update(windForce, 0.1);
         cloth.draw();
 
         requestAnimationFrame(animate);
