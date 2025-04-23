@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Compresión y Expansión</title>
+    <title>CompresiÃ³n y ExpansiÃ³n</title>
     <style>
         body {
             margin: 0;
@@ -35,20 +35,20 @@
     <canvas id="canvas"></canvas>
 
     <script>
-        // Configuración del canvas
+        // ConfiguraciÃ³n del canvas
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // Desactivar el menú contextual en dispositivos táctiles
+        // Desactivar el menÃº contextual en dispositivos tÃ¡ctiles
         canvas.addEventListener('contextmenu', function(e) {
             e.preventDefault();
         });
         canvas.style.touchAction = 'none';
 
-        // Configuración de archivos de audio
+        // ConfiguraciÃ³n de archivos de audio
         const audioFiles = [
             'agitacion.mp3',
             'incertidumbre.mp3',
@@ -61,7 +61,7 @@
         let currentAudio = null;
         let movementActive = false;
 
-        // Automatización
+        // AutomatizaciÃ³n
         let inactivityTimeout;
         const inactivityTime = 10000;
         let autoSequence = ['incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
@@ -110,7 +110,7 @@
                         const u = x / numPointsX;
                         const v = y / numPointsY;
 
-                        // Posición inicial en forma de curva suave
+                        // PosiciÃ³n inicial en forma de curva suave
                         const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
                         const py = canvas.height / 2 - clothHeight / 2 + clothHeight * v;
 
@@ -185,10 +185,10 @@
                         const currentDistance = Math.sqrt(dx * dx + dy * dy);
 
                         if (currentDistance > 0) {
-                            // Calcular dirección
+                            // Calcular direcciÃ³n
                             const diff = (constraint.distance - currentDistance) / currentDistance;
 
-                            // Distribuir corrección
+                            // Distribuir correcciÃ³n
                             const percent1 = p1.pinned ? 0 : 0.5;
                             const percent2 = p2.pinned ? 0 : 0.5;
 
@@ -206,7 +206,7 @@
             }
 
             draw() {
-                // Asegurarse de que el canvas esté limpio
+                // Asegurarse de que el canvas estÃ© limpio
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#000";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -228,24 +228,24 @@
                         const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
                         const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
 
-                        // Calcular normal aproximada para efectos de iluminación
+                        // Calcular normal aproximada para efectos de iluminaciÃ³n
                         const nx = (p3.y - p1.y);
                         const ny = -(p3.x - p1.x);
-                        const norm = Math.sqrt(nx * nx + ny * ny) || 1; // Evitar división por cero
+                        const norm = Math.sqrt(nx * nx + ny * ny) || 1; // Evitar divisiÃ³n por cero
 
                         // Normalizar normal
                         const normalX = nx / norm;
                         const normalY = ny / norm;
 
-                        // Calcular valor de iluminación basado en la normal
+                        // Calcular valor de iluminaciÃ³n basado en la normal
                         const lightX = 0.5;
                         const lightY = -1;
                         const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
 
-                        // Color basado en iluminación (aseguramos valores válidos)
+                        // Color basado en iluminaciÃ³n (aseguramos valores vÃ¡lidos)
                         const brightness = Math.max(0, Math.min(255, Math.floor(210 + lightIntensity * 45)));
 
-                        // Dibujar cuadrilátero
+                        // Dibujar cuadrilÃ¡tero
                         ctx.beginPath();
                         ctx.moveTo(p1.x, p1.y);
                         ctx.lineTo(p2.x, p2.y);
@@ -271,7 +271,7 @@
                             ctx.fill();
                         }
 
-                        // Líneas muy suaves para simular pliegues
+                        // LÃ­neas muy suaves para simular pliegues
                         ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
                         ctx.lineWidth = 0.5;
                         ctx.stroke();
@@ -281,7 +281,7 @@
         }
 
         const cloth = new Cloth();
-        cloth.createConstraints(); // Llamar a crear restricciones después de inicializar
+        cloth.createConstraints(); // Llamar a crear restricciones despuÃ©s de inicializar
 
         //Touch
         function handleTouchStart() {
@@ -414,7 +414,7 @@
         canvas.addEventListener('touchend', handleTouchEnd);
         canvas.addEventListener('mouseup', handleTouchEnd);
 
-        // Iniciar automatización
+        // Iniciar automatizaciÃ³n
         startInactivityTimer();
 
         //Redimensionar
@@ -423,7 +423,7 @@
             canvas.height = window.innerHeight;
         });
 
-        //Animación
+        //AnimaciÃ³n
         let lastTime = performance.now();
 
         function animate() {
@@ -437,8 +437,7 @@
             requestAnimationFrame(animate);
         }
 
-        // Iniciar animación
+        // Iniciar animaciÃ³n
         animate();
     </script>
 </body>
-
