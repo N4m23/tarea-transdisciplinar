@@ -48,11 +48,7 @@
     ];
 
     // Crear objetos de audio
-    const audios = audioFiles.map(file => {
-      const audio = new Audio(file);
-      audio.volume = 0.7;
-      return audio;
-    });
+    let audios = [];
 
     // Estado de reproducción
     let currentAudioIndex = -1;
@@ -335,16 +331,22 @@
           currentAudioIndex = 0; // volver a agitación
         }
       }
-       // Crear el contexto de audio si no existe
+
+      // Crear el contexto de audio si no existe
       if (!audioContext) {
-          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+         audios = audioFiles.map(file => {
+            const audio = new Audio(file);
+            audio.volume = 0.7;
+            return audio;
+        });
       }
 
       // Parar todos los audios anteriores
-      audios.forEach(audio => {
-        audio.pause();
-        audio.currentTime = 0;
-      });
+       audios.forEach(audio => {
+            audio.pause();
+            audio.currentTime = 0;
+        });
 
       // Reproducir el audio actual
       const audio = audios[currentAudioIndex];
@@ -364,6 +366,11 @@
       // Inicializar el contexto de audio al primer movimiento
         if (!audioContext) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
+             audios = audioFiles.map(file => {
+                const audio = new Audio(file);
+                audio.volume = 0.7;
+                return audio;
+            });
         }
       // Calcular velocidad del puntero
       pointerSpeedX = x - pointerX;
@@ -451,8 +458,3 @@
   </script>
 </body>
 </html>
-
-
-
-
-
