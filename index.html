@@ -1,469 +1,458 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Compresión y Expansión</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background-color: #000;
-      overflow: hidden;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      color: #fff;
-      font-family: Arial, sans-serif;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compresión y Expansión</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
 
-    canvas {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-    }
-  </style>
+        canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
 </head>
+
 <body>
-  <canvas id="canvas"></canvas>
+    <canvas id="canvas"></canvas>
 
-  <script>
-    // Configuración del canvas
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+    <script>
+        // Configuración del canvas
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-    // Configuración de archivos de audio
-    const audioFiles = [
-      'agitacion.mp3',
-      'incertidumbre.mp3',
-      'atencion.mp3',
-      'presencia.mp3',
-      'suspension.mp3',
-      'desconexion.mp3'
-    ];
+        // Configuración de archivos de audio
+        const audioFiles = [
+            'agitacion.mp3',
+            'incertidumbre.mp3',
+            'atencion.mp3',
+            'presencia.mp3',
+            'suspension.mp3',
+            'desconexion.mp3'
+        ];
 
-    // Crear objetos de audio
-    let audios = [];
+        // Crear objetos de audio
+        let audios = [];
 
-    // Estado de reproducción
-    let currentAudioIndex = -1;
-    let isPlaying = false;
-    let sequenceStarted = false;
-    let lastInteractionTime = 0;
-    let audioContext; // Declarar audioContext aquí
+        // Estado de reproducción
+        let currentAudioIndex = -1;
+        let isPlaying = false;
+        let sequenceStarted = false;
+        let lastInteractionTime = 0;
+        let audioContext; // Declarar audioContext aquí
 
-    // Variables para la interacción del mouse/táctil
-    let pointerX = canvas.width / 2;
-    let pointerY = canvas.height / 2;
-    let prevPointerX = pointerX;
-    let prevPointerY = pointerY;
-    let pointerSpeedX = 0;
-    let pointerSpeedY = 0;
-    let totalMovement = 0;
+        // Variables para la interacción del mouse/táctil
+        let pointerX = canvas.width / 2;
+        let pointerY = canvas.height / 2;
+        let prevPointerX = pointerX;
+        let prevPointerY = pointerY;
+        let pointerSpeedX = 0;
+        let pointerSpeedY = 0;
+        let totalMovement = 0;
 
-    // Configuración de la simulación de tela
-    const clothWidth = 400;
-    const clothHeight = 300;
-    const numPointsX = 30;
-    const numPointsY = 20;
-    const restDistance = clothWidth / numPointsX;
+        // Configuración de la simulación de tela
+        const clothWidth = 400;
+        const clothHeight = 300;
+        const numPointsX = 30;
+        const numPointsY = 20;
+        const restDistance = clothWidth / numPointsX;
 
-    // Clase Punto para la simulación de tela
-    class Point {
-      constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.originalX = x;
-        this.originalY = y;
-        this.vx = 0;
-        this.vy = 0;
-        this.pinned = false;
-        this.mass = 1;
-      }
-    }
+        // Clase Punto para la simulación de tela
+        class Point {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.originalX = x;
+                this.originalY = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.pinned = false;
+                this.mass = 1;
+            }
+        }
 
-    // Clase tela para simulación
-    class Cloth {
-      constructor() {
-        this.points = [];
+        // Clase tela para simulación
+        class Cloth {
+            constructor() {
+                this.points = [];
 
-        // Crear puntos de la tela
-        for (let y = 0; y <= numPointsY; y++) {
-          for (let x = 0; x <= numPointsX; x++) {
-            const u = x / numPointsX;
-            const v = y / numPointsY;
+                // Crear puntos de la tela
+                for (let y = 0; y <= numPointsY; y++) {
+                    for (let x = 0; x <= numPointsX; x++) {
+                        const u = x / numPointsX;
+                        const v = y / numPointsY;
 
-            // Posición inicial en forma de curva suave
-            const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
-            const py = canvas.height / 2 - clothHeight / 2 + clothHeight * v;
+                        // Posición inicial en forma de curva suave
+                        const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
+                        const py = canvas.height / 2 - clothHeight / 2 + clothHeight * v;
 
-            const point = new Point(px, py);
+                        const point = new Point(px, py);
 
-            // Fijar solo los puntos superiores para que cuelgue
-            if (y === 0) {
-              point.pinned = true;
+                        // Fijar solo los puntos superiores para que cuelgue
+                        if (y === 0) {
+                            point.pinned = true;
+                        }
+
+                        this.points.push(point);
+                    }
+                }
+
+                // Generar el índice para acceder a los puntos fácilmente
+                this.getPoint = (x, y) => this.points[y * (numPointsX + 1) + x];
+
+                // Conectar puntos con restricciones elásticas
+                this.constraints = [];
+
+                // Restricciones estructurales horizontales
+                for (let y = 0; y <= numPointsY; y++) {
+                    for (let x = 0; x < numPointsX; x++) {
+                        this.constraints.push({
+                            p1: this.getPoint(x, y),
+                            p2: this.getPoint(x + 1, y),
+                            distance: restDistance
+                        });
+                    }
+                }
+
+                // Restricciones estructurales verticales
+                for (let x = 0; x <= numPointsX; x++) {
+                    for (let y = 0; y < numPointsY; y++) {
+                        this.constraints.push({
+                            p1: this.getPoint(x, y),
+                            p2: this.getPoint(x, y + 1),
+                            distance: restDistance
+                        });
+                    }
+                }
+
+                // Restricciones de corte diagonal 1
+                for (let y = 0; y < numPointsY; y++) {
+                    for (let x = 0; x < numPointsX; x++) {
+                        this.constraints.push({
+                            p1: this.getPoint(x, y),
+                            p2: this.getPoint(x + 1, y + 1),
+                            distance: Math.sqrt(restDistance * restDistance * 2)
+                        });
+                    }
+                }
+
+                // Restricciones de corte diagonal 2
+                for (let y = 0; y < numPointsY; y++) {
+                    for (let x = 0; x < numPointsX; x++) {
+                        this.constraints.push({
+                            p1: this.getPoint(x + 1, y),
+                            p2: this.getPoint(x, y + 1),
+                            distance: Math.sqrt(restDistance * restDistance * 2)
+                        });
+                    }
+                }
             }
 
-            this.points.push(point);
-          }
-        }
+            update(dt) {
+                // Constantes físicas
+                const GRAVITY = 0.0981 * dt;
+                const DAMPING = 0.97;
+                const DRAG = 1 - 0.02;
 
-        // Generar el índice para acceder a los puntos fácilmente
-        this.getPoint = (x, y) => this.points[y * (numPointsX + 1) + x];
+                // Aplicar fuerzas
+                for (let i = 0; i < this.points.length; i++) {
+                    const point = this.points[i];
+                    if (!point.pinned) {
+                        // Acumular fuerzas
+                        point.vy += GRAVITY;
 
-        // Conectar puntos con restricciones elásticas
-        this.constraints = [];
+                        // Verlet integration
+                        const prevX = point.x;
+                        const prevY = point.y;
 
-        // Restricciones estructurales horizontales
-        for (let y = 0; y <= numPointsY; y++) {
-          for (let x = 0; x < numPointsX; x++) {
-            this.constraints.push({
-              p1: this.getPoint(x, y),
-              p2: this.getPoint(x + 1, y),
-              distance: restDistance
-            });
-          }
-        }
+                        point.x += point.vx;
+                        point.y += point.vy;
 
-        // Restricciones estructurales verticales
-        for (let x = 0; x <= numPointsX; x++) {
-          for (let y = 0; y < numPointsY; y++) {
-            this.constraints.push({
-              p1: this.getPoint(x, y),
-              p2: this.getPoint(x, y + 1),
-              distance: restDistance
-            });
-          }
-        }
+                        // Actualizar velocidades con amortiguación
+                        point.vx = (point.x - prevX) * DAMPING;
+                        point.vy = (point.y - prevY) * DAMPING;
+                    }
+                }
 
-        // Restricciones de corte diagonal 1
-        for (let y = 0; y < numPointsY; y++) {
-          for (let x = 0; x < numPointsX; x++) {
-            this.constraints.push({
-              p1: this.getPoint(x, y),
-              p2: this.getPoint(x + 1, y + 1),
-              distance: Math.sqrt(restDistance * restDistance * 2)
-            });
-          }
-        }
+                // Resolver restricciones
+                const iterations = 15;
+                for (let i = 0; i < iterations; i++) {
+                    for (let j = 0; j < this.constraints.length; j++) {
+                        const constraint = this.constraints[j];
+                        const p1 = constraint.p1;
+                        const p2 = constraint.p2;
 
-        // Restricciones de corte diagonal 2
-        for (let y = 0; y < numPointsY; y++) {
-          for (let x = 0; x < numPointsX; x++) {
-            this.constraints.push({
-              p1: this.getPoint(x + 1, y),
-              p2: this.getPoint(x, y + 1),
-              distance: Math.sqrt(restDistance * restDistance * 2)
-            });
-          }
-        }
-      }
+                        // Cálculo de la distancia actual
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const currentDistance = Math.sqrt(dx * dx + dy * dy);
 
-      update(dt) {
-        // Constantes físicas
-        const GRAVITY = 0.0981 * dt;
-        const DAMPING = 0.97;
-        const DRAG = 1 - 0.02;
+                        if (currentDistance > 0) {
+                            // Calcular dirección
+                            const diff = (constraint.distance - currentDistance) / currentDistance;
 
-        // Aplicar fuerzas
-        for (let i = 0; i < this.points.length; i++) {
-          const point = this.points[i];
-          if (!point.pinned) {
-            // Acumular fuerzas
-            point.vy += GRAVITY;
+                            // Distribuir corrección
+                            const percent1 = p1.pinned ? 0 : 0.5;
+                            const percent2 = p2.pinned ? 0 : 0.5;
 
-            // Verlet integration
-            const prevX = point.x;
-            const prevY = point.y;
+                            const offsetX = dx * diff;
+                            const offsetY = dy * diff;
 
-            point.x += point.vx;
-            point.y += point.vy;
+                            p1.x -= offsetX * percent1;
+                            p1.y -= offsetY * percent1;
 
-            // Actualizar velocidades con amortiguación
-            point.vx = (point.x - prevX) * DAMPING;
-            point.vy = (point.y - prevY) * DAMPING;
-          }
-        }
-
-        // Resolver restricciones
-        const iterations = 15;
-        for (let i = 0; i < iterations; i++) {
-          for (let j = 0; j < this.constraints.length; j++) {
-            const constraint = this.constraints[j];
-            const p1 = constraint.p1;
-            const p2 = constraint.p2;
-
-            // Cálculo de la distancia actual
-            const dx = p2.x - p1.x;
-            const dy = p2.y - p1.y;
-            const currentDistance = Math.sqrt(dx * dx + dy * dy);
-
-            if (currentDistance > 0) {
-              // Calcular dirección
-              const diff = (constraint.distance - currentDistance) / currentDistance;
-
-              // Distribuir corrección
-              const percent1 = p1.pinned ? 0 : 0.5;
-              const percent2 = p2.pinned ? 0 : 0.5;
-
-              const offsetX = dx * diff;
-              const offsetY = dy * diff;
-
-              p1.x -= offsetX * percent1;
-              p1.y -= offsetY * percent1;
-
-              p2.x += offsetX * percent2;
-              p2.y += offsetY * percent2;
+                            p2.x += offsetX * percent2;
+                            p2.y += offsetY * percent2;
+                        }
+                    }
+                }
             }
-          }
+
+            applyWindForce(forceX, forceY) {
+                // Aplicar fuerzas de viento a todos los puntos
+                for (let i = 0; i < this.points.length; i++) {
+                    const point = this.points[i];
+                    if (!point.pinned) {
+                        // Añadir un pequeño componente aleatorio para simular turbulencia
+                        const randomX = (Math.random() - 0.5) * 0.1;
+                        const randomY = (Math.random() - 0.5) * 0.1;
+
+                        point.vx += forceX + randomX;
+                        point.vy += forceY + randomY;
+                    }
+                }
+            }
+
+            draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Dibujar la tela con degradado suave
+                for (let y = 0; y < numPointsY; y++) {
+                    for (let x = 0; x < numPointsX; x++) {
+                        const p1 = this.getPoint(x, y);
+                        const p2 = this.getPoint(x + 1, y);
+                        const p3 = this.getPoint(x + 1, y + 1);
+                        const p4 = this.getPoint(x, y + 1);
+
+                        // Crear gradiente para simular sombras
+                        const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
+                        const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
+
+                        // Calcular normal aproximada para efectos de iluminación
+                        const nx = (p3.y - p1.y);
+                        const ny = -(p3.x - p1.x);
+                        const norm = Math.sqrt(nx * nx + ny * ny);
+
+                        // Normalizar normal
+                        const normalX = nx / norm;
+                        const normalY = ny / norm;
+
+                        // Calcular valor de iluminación basado en la normal
+                        const lightX = 0.5;
+                        const lightY = -1;
+                        const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
+
+                        // Color basado en iluminación
+                        const brightness = Math.floor(210 + lightIntensity * 45);
+
+                        // Dibujar cuadrilátero
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.lineTo(p3.x, p3.y);
+                        ctx.lineTo(p4.x, p4.y);
+                        ctx.closePath();
+
+                        // Gradiente radial para simular pliegues y ondulaciones
+                        const gradient = ctx.createRadialGradient(
+                            centerX, centerY, 0,
+                            centerX, centerY, restDistance * 2
+                        );
+
+                        gradient.addColorStop(0, `rgba(${brightness}, ${brightness}, ${brightness}, 0.9)`);
+                        gradient.addColorStop(1, `rgba(${brightness-20}, ${brightness-20}, ${brightness-20}, 0.85)`);
+
+                        ctx.fillStyle = gradient;
+                        ctx.fill();
+
+                        // Líneas muy suaves para simular pliegues
+                        ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
         }
-      }
 
-      applyWindForce(forceX, forceY) {
-        // Aplicar fuerzas de viento a todos los puntos
-        for (let i = 0; i < this.points.length; i++) {
-          const point = this.points[i];
-          if (!point.pinned) {
-            // Añadir un pequeño componente aleatorio para simular turbulencia
-            const randomX = (Math.random() - 0.5) * 0.1;
-            const randomY = (Math.random() - 0.5) * 0.1;
+        // Crear tela
+        const cloth = new Cloth();
 
-            point.vx += forceX + randomX;
-            point.vy += forceY + randomY;
-          }
+        // Función para reproducir audio según la secuencia
+        function playNextAudio(movementSpeed) {
+            // Si ya hay un audio reproduciéndose, no hacer nada
+            if (isPlaying) return;
+            const fastMovementThreshold = 5;
+            // Avanzar al siguiente audio en la secuencia
+            if (!sequenceStarted) {
+                // Iniciar la secuencia desde uno de los dos puntos de entrada
+                currentAudioIndex = Math.random() < 0.5 ? 0 : 4; // Agitación o Suspensión
+                sequenceStarted = true;
+            } else {
+                // Secuencia específica según lo solicitado
+                if (movementSpeed > fastMovementThreshold) {
+                  currentAudioIndex = 0
+                } else if (currentAudioIndex === 0) { // Después de agitación
+                    currentAudioIndex = 1; // incertidumbre
+                } else if (currentAudioIndex === 1) { // Después de incertidumbre
+                    currentAudioIndex = 2; // atención
+                } else if (currentAudioIndex === 2) { // Después de atención
+                    currentAudioIndex = 3; // presencia
+                } else if (currentAudioIndex === 3) { // Después de presencia
+                    currentAudioIndex = 4; // suspensión
+                } else if (currentAudioIndex === 4) { // Después de suspensión
+                    currentAudioIndex = 5; // desconexión
+                } else if (currentAudioIndex === 5) { // Después de desconexión
+                    currentAudioIndex = 0; // volver a agitación
+                }
+            }
+
+            // Parar todos los audios anteriores
+            for (let i = 0; i < audios.length; i++) {
+                if (audios[i]) {
+                    audios[i].pause();
+                    audios[i].currentTime = 0;
+                }
+            }
+            if (!audioContext) {
+              audioContext = new (window.AudioContext || window.webkitAudioContext)();
+               audios = audioFiles.map(file => {
+                  const audio = new Audio(file);
+                  audio.volume = 0.7;
+                  return audio;
+              });
+            }
+
+            // Reproducir el audio actual
+            const audio = audios[currentAudioIndex];
+            audio.play();
+            isPlaying = true;
+
+            // Cuando termine el audio, marcar como no reproduciendo
+            audio.onended = function() {
+                isPlaying = false;
+                // Reproducir automáticamente el siguiente en la secuencia
+                setTimeout(playNextAudio, 1000);
+            };
         }
-      }
 
-      draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Función para manejar el movimiento del puntero (mouse o táctil)
+        function handlePointerMove(x, y) {
+            // Calcular velocidad del puntero
+            pointerSpeedX = x - pointerX;
+            pointerSpeedY = y - pointerY;
 
-        // Dibujar la tela con degradado suave
-        for (let y = 0; y < numPointsY; y++) {
-          for (let x = 0; x < numPointsX; x++) {
-            const p1 = this.getPoint(x, y);
-            const p2 = this.getPoint(x + 1, y);
-            const p3 = this.getPoint(x + 1, y + 1);
-            const p4 = this.getPoint(x, y + 1);
+            // Calcular distancia recorrida
+            const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
+            totalMovement += distance;
 
-            // Crear gradiente para simular sombras
-            const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
-            const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
+            const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY)
+            // Actualizar posición del puntero
+            pointerX = x;
+            pointerY = y;
 
-            // Calcular normal aproximada para efectos de iluminación
-            const nx = (p3.y - p1.y);
-            const ny = -(p3.x - p1.x);
-            const norm = Math.sqrt(nx * nx + ny * ny);
+            // Actualizar tiempo de la última interacción
+            lastInteractionTime = performance.now();
 
-            // Normalizar normal
-            const normalX = nx / norm;
-            const normalY = ny / norm;
+            // Si el movimiento acumulado es suficiente, iniciar reproducción de audio
+            if (totalMovement > 100 && !isPlaying) {
+                playNextAudio(movementSpeed);
+                totalMovement = 0;
+            }
 
-            // Calcular valor de iluminación basado en la normal
-            const lightX = 0.5;
-            const lightY = -1;
-            const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
+            // Aplicar fuerza del puntero a la tela
+            const pointerForceRadius = 150;
+            const pointerForce = 0.5;
 
-            // Color basado en iluminación
-            const brightness = Math.floor(210 + lightIntensity * 45);
+            for (let i = 0; i < cloth.points.length; i++) {
+                const point = cloth.points[i];
+                const dx = point.x - pointerX;
+                const dy = point.y - pointerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Dibujar cuadrilátero
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.lineTo(p3.x, p3.y);
-            ctx.lineTo(p4.x, p4.y);
-            ctx.closePath();
-
-            // Gradiente radial para simular pliegues y ondulaciones
-            const gradient = ctx.createRadialGradient(
-              centerX, centerY, 0,
-              centerX, centerY, restDistance * 2
-            );
-
-            gradient.addColorStop(0, `rgba(${brightness}, ${brightness}, ${brightness}, 0.9)`);
-            gradient.addColorStop(1, `rgba(${brightness-20}, ${brightness-20}, ${brightness-20}, 0.85)`);
-
-            ctx.fillStyle = gradient;
-            ctx.fill();
-
-            // Líneas muy suaves para simular pliegues
-            ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
+                if (dist < pointerForceRadius) {
+                    const force = (1 - dist / pointerForceRadius) * pointerForce;
+                    point.vx += (pointerSpeedX * force) / point.mass;
+                    point.vy += (pointerSpeedY * force) / point.mass;
+                }
+            }
         }
-      }
-    }
 
-    // Crear tela
-    const cloth = new Cloth();
-
-    // Función para reproducir audio según la secuencia
-    function playNextAudio(movementSpeed) {  // <---- AÑADIMOS movementSpeed
-      // Si ya hay un audio reproduciéndose, no hacer nada
-      if (isPlaying) return;
-
-      // Seleccionar pista según velocidad
-      if (!sequenceStarted) {
-        currentAudioIndex = Math.random() < 0.5 ? 0 : 4; // Agitación o Suspensión
-        sequenceStarted = true;
-      } else {
-         // Umbral para considerar movimiento "rápido"
-        const fastMovementThreshold = 50;  // A ajustarrrrrr
-
-        if(movementSpeed > fastMovementThreshold) {
-          currentAudioIndex = 0; // Agitación
-        } else {
-           // Secuencia normal (como antes)
-          if (currentAudioIndex === 0) {
-            currentAudioIndex = 1;
-          } else if (currentAudioIndex === 1) {
-            currentAudioIndex = 2;
-          } else if (currentAudioIndex === 2) {
-            currentAudioIndex = 3;
-          } else if (currentAudioIndex === 3) {
-            currentAudioIndex = 4;
-          } else if (currentAudioIndex === 4) {
-            currentAudioIndex = 5;
-          } else if (currentAudioIndex === 5) {
-            currentAudioIndex = 0;
-          }
-        }
-      }
-
-      // Parar todos los audios anteriores
-      for (let i = 0; i < audios.length; i++) {
-        audios[i].pause();
-        audios[i].currentTime = 0;
-      }
-
-      // Crear el contexto de audio si no existe
-      if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-         audios = audioFiles.map(file => {
-            const audio = new Audio(file);
-            audio.volume = 0.7;
-            return audio;
+        // Listener para el movimiento del mouse
+        window.addEventListener('mousemove', function(event) {
+            handlePointerMove(event.clientX, event.clientY);
         });
-      }
 
-      // Reproducir el audio actual
-      const audio = audios[currentAudioIndex];
-      audio.play();
-      isPlaying = true;
+        // Listener para eventos táctiles
+        window.addEventListener('touchmove', function(event) {
+            event.preventDefault();
+            const touch = event.touches[0];
+            handlePointerMove(touch.clientX, touch.clientY);
+        });
 
-      // Cuando termine el audio, marcar como no reproduciendo
-      audio.onended = function() {
-        isPlaying = false;
-        // Reproducir automáticamente el siguiente en la secuencia
-        setTimeout(playNextAudio, 1000);
-      };
-    }
+        // Listener para redimensionar la ventana
+        window.addEventListener('resize', function() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
 
-    // Función para manejar el movimiento del puntero (mouse o táctil)
-    function handlePointerMove(x, y) {
-        // Inicializar el contexto de audio al primer movimiento
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-             audios = audioFiles.map(file => {
-                const audio = new Audio(file);
-                audio.volume = 0.7;
-                return audio;
-            });
+        // Variables para el bucle de animación
+        let lastTime = performance.now();
+
+        // Función de animación
+        function animate() {
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 16; // Normalizado a 60 FPS
+            lastTime = currentTime;
+
+            // Aplicar fuerza basada en el audio actual
+            if (isPlaying) {
+                let audioForce = 0;
+
+            }
+
+            // Actualizar la simulación de la tela
+            cloth.update(deltaTime);
+
+            // Dibujar la tela
+            cloth.draw();
+
+            // Solicitar el próximo frame de animación
+            requestAnimationFrame(animate);
         }
-      // Calcular velocidad del puntero
-      pointerSpeedX = x - pointerX;
-      pointerSpeedY = y - pointerY;
 
-      // Calcular distancia recorrida
-      const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
-      totalMovement += distance;
-      // Calcular velocidad total
-        const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
-
-      // Actualizar posición del puntero
-      pointerX = x;
-      pointerY = y;
-
-      // Actualizar tiempo de la última interacción
-      lastInteractionTime = performance.now();
-
-      // Si el movimiento acumulado es suficiente, iniciar reproducción de audio
-      if (totalMovement > 100 && !isPlaying) {
-        playNextAudio(movementSpeed);   //  <------  PASAMOS LA VELOCIDAD
-        totalMovement = 0;
-      }
-
-      // Aplicar fuerza del puntero a la tela
-      const pointerForceRadius = 150;
-      const pointerForce = 0.5;
-
-      for (let i = 0; i < cloth.points.length; i++) {
-        const point = cloth.points[i];
-        const dx = point.x - pointerX;
-        const dy = point.y - pointerY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < pointerForceRadius) {
-          const force = (1 - dist / pointerForceRadius) * pointerForce;
-          point.vx += (pointerSpeedX * force) / point.mass;
-          point.vy += (pointerSpeedY * force) / point.mass;
-        }
-      }
-    }
-
-    // Listener para el movimiento del mouse
-    window.addEventListener('mousemove', function(event) {
-      handlePointerMove(event.clientX, event.clientY);
-    });
-
-    // Listener para eventos táctiles
-    window.addEventListener('touchmove', function(event) {
-      event.preventDefault();
-      const touch = event.touches[0];
-      handlePointerMove(touch.clientX, touch.clientY);
-    });
-
-    // Listener para redimensionar la ventana
-    window.addEventListener('resize', function() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    });
-
-    // Variables para el bucle de animación
-    let lastTime = performance.now();
-
-    // Función de animación
-    function animate() {
-      const currentTime = performance.now();
-      const deltaTime = (currentTime - lastTime) / 16; // Normalizado a 60 FPS
-      lastTime = currentTime;
-
-      // Aplicar fuerza basada en el audio actual
-      if (isPlaying) {
-        let audioForce = 0;
-      }
-
-      // Actualizar la simulación de la tela
-      cloth.update(deltaTime);
-
-      // Dibujar la tela
-      cloth.draw();
-
-      // Solicitar el próximo frame de animación
-      requestAnimationFrame(animate);
-    }
-
-    // Iniciar la animación
-    animate();
-  </script>
+        // Iniciar la animación
+        animate();
+    </script>
 </body>
-</html>
 
+</html>
