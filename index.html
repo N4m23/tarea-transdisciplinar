@@ -54,7 +54,6 @@
     let isPlaying = false;
     let sequenceStarted = false;
     let lastInteractionTime = 0;
-    let audioInitialized = false; // Nueva variable para verificar si el audio se ha inicializado
 
     // Variables de interacción
     let pointerX = canvas.width / 2;
@@ -179,7 +178,6 @@
 
     const cloth = new Cloth();
 
-    // Función para inicializar el contexto de audio
     function initAudioContext() {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       audios = audioFiles.map(file => {
@@ -187,12 +185,10 @@
         audio.volume = 0.7;
         return audio;
       });
-      audioInitialized = true; // Marcar que el audio se ha inicializado
     }
 
-    // Función para reproducir el siguiente audio en la secuencia
     function playNextAudio() {
-      if (!audioInitialized) {
+      if (!audioContext) {
         initAudioContext();
       }
 
@@ -226,8 +222,11 @@
       pointerX = x;
       pointerY = y;
 
-      if (!audioInitialized) {
+      if (!audioContext) {
         initAudioContext();
+      }
+
+      if (!isPlaying) {
         playNextAudio();
       }
 
@@ -271,6 +270,7 @@
   </script>
 </body>
 </html>
+
 
 
 
