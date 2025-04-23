@@ -43,39 +43,18 @@
             font-size: 16px;
             z-index: 100;
         }
-
-        #audio-indicator {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            padding: 8px 12px;
-            background-color: rgba(0, 0, 0, 0.5);
-            color: white;
-            border-radius: 15px;
-            font-size: 14px;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            z-index: 100;
-        }
-
-        #audio-indicator.active {
-            opacity: 1;
-        }
     </style>
 </head>
 
 <body>
     <canvas id="canvas"></canvas>
     <button id="start-button">Iniciar Experiencia</button>
-    <div id="audio-indicator">▶️ Reproduciendo: <span id="audio-name">ninguno</span></div>
 
     <script>
         // Configuración del canvas
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const startButton = document.getElementById('start-button');
-        const audioIndicator = document.getElementById('audio-indicator');
-        const audioNameDisplay = document.getElementById('audio-name');
 
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -362,7 +341,7 @@
             // La política de autoplay requiere una interacción del usuario
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             
-            // Intentar reanudar el contexto si está suspendido
+            // Asegurar que el contexto esté en ejecución
             if (audioContext.state === 'suspended') {
                 audioContext.resume().then(() => {
                     console.log("AudioContext reanudado con éxito");
@@ -452,6 +431,11 @@
             console.log("Intentando reproducir:", audioName);
             resetInactivityTimer();
             
+            // Asegurar que el audioContext esté activo
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().catch(e => console.error("Error al reanudar contexto:", e));
+            }
+            
             // No reiniciar si ya está sonando el mismo audio y está activo
             if (currentAudio && lastAudioName === audioName && !currentAudio.paused) {
                 return;
@@ -461,9 +445,6 @@
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
-                
-                // Ocultar el indicador cuando se detiene el audio
-                audioIndicator.classList.remove('active');
             }
             
             const audioToPlay = audios[audioName];
@@ -474,15 +455,6 @@
             
             // Asegurar que el audio comienza desde el principio
             audioToPlay.currentTime = 0;
-            
-            // Mostrar el nombre del audio que se está reproduciendo
-            audioNameDisplay.textContent = audioName.replace('.mp3', '');
-            audioIndicator.classList.add('active');
-            
-            // Intentar reanudar el contexto de audio si está suspendido
-            if (audioContext.state === 'suspended') {
-                audioContext.resume().catch(err => console.error("Error al reanudar contexto:", err));
-            }
             
             // Reproducir con promise para capturar posibles errores
             const playPromise = audioToPlay.play();
@@ -495,10 +467,14 @@
                     console.error("Error reproduciendo audio:", error);
                     // Intentar reproducir de nuevo en caso de error
                     setTimeout(() => {
-                        // Intentar reanudar el contexto antes de volver a intentar
-                        audioContext.resume().then(() => {
+                        // Intentar reanudar el contexto de audio antes de reintentar
+                        if (audioContext.state === 'suspended') {
+                            audioContext.resume().then(() => {
+                                audioToPlay.play().catch(e => console.error("Reintento fallido:", e));
+                            });
+                        } else {
                             audioToPlay.play().catch(e => console.error("Reintento fallido:", e));
-                        });
+                        }
                     }, 100);
                 });
             }
@@ -508,9 +484,6 @@
                 if (interactionActive && lastAudioName === audioName) {
                     audioToPlay.currentTime = 0;
                     audioToPlay.play().catch(e => console.error("Error en repetición:", e));
-                } else {
-                    // Ocultar el indicador cuando termina el audio
-                    audioIndicator.classList.remove('active');
                 }
             };
         }
@@ -615,8 +588,6 @@
                 interactionActive = false;
                 if (currentAudio) {
                     currentAudio.pause();
-                    // Ocultar el indicador cuando se detiene el audio
-                    audioIndicator.classList.remove('active');
                 }
             }
         }
@@ -633,20 +604,20 @@
             canvas.height = window.innerHeight;
         });
 
-        // MEJORA: manejo de visibilidad de la página
+        // Manejar cuando la página pierde o gana foco
         document.addEventListener('visibilitychange', function() {
             if (document.hidden) {
-                // Pausar audio cuando la página está oculta
+                // Pausar audio si la página está oculta
                 if (currentAudio && !currentAudio.paused) {
                     currentAudio.pause();
-                    audioIndicator.classList.remove('active');
                 }
             } else {
-                // Reanudar el contexto de audio cuando la página vuelve a ser visible
+                // Reanudar el contexto de audio cuando la página vuelve a estar visible
                 if (audioContext && audioContext.state === 'suspended') {
-                    audioContext.resume().catch(err => console.error("Error al reanudar contexto:", err));
+                    audioContext.resume();
                 }
-                // No reiniciamos automáticamente el audio para no interrumpir la experiencia
+                // Se puede opcionalmente reanudar la reproducción de audio aquí
+                // si es lo que se desea para la experiencia
             }
         });
 
@@ -668,4 +639,6 @@
         cloth.draw();
     </script>
 </body>
+
+</html>
 
