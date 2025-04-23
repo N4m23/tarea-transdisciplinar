@@ -1,604 +1,161 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tela Interactiva con Audio</title>
     <style>
         body {
             margin: 0;
-            padding: 0;
-            background-color: #000;
+            background: black;
             overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            color: #fff;
-            font-family: Arial, sans-serif;
+            touch-action: none;
         }
-
-        .container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-
         canvas {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-        
-        #debug {
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.7);
-            padding: 5px;
-            font-size: 12px;
-            color: #fff;
-            z-index: 1000;
-            display: none;
+            touch-action: none;
         }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.core.min.js"></script>
 </head>
 <body>
-<div class="container">
-    <canvas id="canvas"></canvas>
-    <div id="debug"></div>
-</div>
-
-<script>
-    // Configuración del canvas
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const debug = document.getElementById('debug');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    <canvas id="visualizer"></canvas>
+    <audio id="audioPlayer"></audio>
     
-    // Mostrar información de debug si es necesario (para desarrollo)
-    const showDebug = false;
-    if (showDebug) {
-        debug.style.display = 'block';
-    }
+    <script>
+        const audioFiles = [
+            'agitacion.mp3',
+            'incertidumbre.mp3',
+            'atencion.mp3',
+            'presencia.mp3',
+            'suspension.mp3',
+            'desconexion.mp3'
+        ];
 
-    // Ajuste del canvas cuando cambia el tamaño de la ventana
-    window.addEventListener('resize', () => {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    });
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const audioPlayer = document.getElementById('audioPlayer');
+        let audioContext, analyser, source, gainNode;
+        let currentTrack = 5;
+        let isLooping = true;
+        let lastPosition = 0;
+        let lastTime = 0;
+        const VELOCITY_THRESHOLD = 0.8;
+        const fadeDuration = 1.5;
 
-    // Configuración de audio con manejo de errores
-    const audioFiles = ['agitacion.mp3', 'incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
-    const audios = {};
-    let audioLoadCount = 0;
-    let audioErrorCount = 0;
-
-    // Cargar los archivos de audio con manejo de errores
-    audioFiles.forEach(file => {
-        const name = file.split('.')[0];
-        audios[name] = new Howl({
-            src: [file],
-            loop: true,
-            volume: 0,
-            onload: function() {
-                audioLoadCount++;
-                logDebug(`Audio cargado: ${file}`);
-                if (name === 'desconexion' && audioLoadCount === 1) {
-                    // Comenzar con desconexion tan pronto como esté disponible
-                    startAudioTransition('desconexion');
-                }
-            },
-            onloaderror: function(id, err) {
-                audioErrorCount++;
-                logDebug(`Error al cargar ${file}: ${err}`);
-                // En caso de error, no hacer nada por ahora
-                audios[name] = createSilentAudio();
-            }
-        });
-    });
-
-   // Crea un reemplazo silencioso para audios que no se pueden cargar
-    function createSilentAudio() {
-        return {
-            play: function() { return this; },
-            stop: function() { return this; },
-            fade: function(from, to, duration) { return this; },
-            volume: function(vol) { if (vol !== undefined) return this; return 0; },
-            playing: function() { return false; }
-        };
-    }
-
-    // Función para mostrar información de debug
-    function logDebug(message) {
-        if (showDebug) {
-            console.log(message);
-            debug.innerHTML += message + '<br>';
-            // Limitar el número de líneas
-            if (debug.innerHTML.split('<br>').length > 20) {
-                debug.innerHTML = debug.innerHTML.split('<br>').slice(-20).join('<br>');
-            }
-        }
-    }
-
-    // Secuencia definida de reproducción
-    const audioSequence = ['agitacion', 'incertidumbre', 'atencion', 'presencia', 'suspension', 'desconexion'];
-    let currentAudioIndex = 5; // Empezamos con desconexion (índice 5)
-    let currentAudio = null;
-    let isFirstInteraction = true;
-    let hasInteracted = false;
-    let forcedSequentialPlay = false; // Indicador para control de secuencia estricto
-    
-    // Estado actual del sistema
-    let systemState = {
-        audioPlaying: false,
-        currentAudioName: 'none',
-        mouseInCanvas: false,
-        mouseSpeed: 0
-    };
-
-    // Variables para el control del mouse
-    let lastPos = { x: 0, y: 0 };
-    let lastTime = Date.now();
-    let mouseStillTime = Date.now();
-    let mouseSpeed = 0;
-    let mouseInCanvas = false;
-
-    // Variables para el suavizado de la transición de audio
-    const transitionDuration = 2000; // Duración de la transición en milisegundos
-    const audioVolume = {
-        agitacion: 0.7,         // Más volumen para asegurar que se escuche
-        incertidumbre: 0.6,
-        atencion: 0.5,
-        presencia: 0.4,
-        suspension: 0.3,
-        desconexion: 0.2        // Algo de volumen para asegurar que sea audible
-    };
-    
-    // Tiempo mínimo para reproducir cada audio antes de cambiar
-    const minPlayDuration = 5000; // 5 segundos mínimo para cada audio
-    let lastAudioChangeTime = Date.now();
-
-    // Constantes para la simulación
-    const stillnessThreshold = 3000; // Tiempo de inactividad para cambiar el audio (ms)
-    const baseWindForce = 0.002;    // Mayor fuerza base para asegurar el movimiento
-    const volumeFactor = 25;       // Mayor sensibilidad al volumen para el movimiento de la tela
-
-    // Función para reproducir el siguiente audio en la secuencia
-    function playNextInSequence() {
-        // Avanzar al siguiente audio en la secuencia
-        currentAudioIndex = (currentAudioIndex + 1) % audioSequence.length;
-        const audioName = audioSequence[currentAudioIndex];
-        startAudioTransition(audioName);
-        lastAudioChangeTime = Date.now();
-    }
-
-    // Función para seleccionar el audio basado en la interacción
-    function selectAudioBasedOnInteraction() {
-        // Si estamos en modo secuencial forzado, respetamos el tiempo mínimo de reproducción
-        if (forcedSequentialPlay && Date.now() - lastAudioChangeTime < minPlayDuration) {
-            return audioSequence[currentAudioIndex]; // Mantener el audio actual
-        }
-        
-        // Si el mouse no está en el canvas o está inmóvil por mucho tiempo, volver a desconexión
-        if (!mouseInCanvas || Date.now() - mouseStillTime > 8000) {
-            return 'desconexion';
+        function initCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
         }
 
-        // Si estamos en modo secuencial forzado, ir al siguiente en la secuencia
-        if (forcedSequentialPlay) {
-            playNextInSequence();
-            return audioSequence[currentAudioIndex];
-        }
-        
-        // Modo basado en velocidad del mouse (comportamiento original)
-        if (mouseSpeed > 0.35) {
-            return 'agitacion';
-        } else if (mouseSpeed > 0.15) {
-            return 'incertidumbre';
-        } else if (mouseSpeed > 0.05) {
-            return 'atencion';
-        } else if (mouseSpeed > 0.01) {
-            return 'presencia';
-        } else if (Date.now() - mouseStillTime > stillnessThreshold) {
-            return 'suspension';
-        } else {
-            return audioSequence[currentAudioIndex]; // Mantener el audio actual
-        }
-    }
-
-    // Función para activar la transición de audio
-    function startAudioTransition(audioName) {
-        logDebug(`Transición a audio: "${audioName}"`);
-        
-        if (!audios[audioName]) {
-            logDebug(`Error: No se encontró el audio "${audioName}"`);
-            return;
-        }
-        
-        // Guardar estado
-        systemState.currentAudioName = audioName;
-        
-        if (currentAudio && currentAudio.playing) {
-            try {
-                currentAudio.fade(currentAudio.volume(), 0, transitionDuration);
-                
-                // Programar la detención después de fundirse a cero
-                setTimeout(() => {
-                    if (currentAudio && currentAudio.stop) {
-                        currentAudio.stop();
-                    }
-                }, transitionDuration);
-            } catch (e) {
-                logDebug(`Error al detener audio anterior: ${e.message}`);
-            }
-        }
-        
-        try {
-            const targetAudio = audios[audioName];
-            targetAudio.volume(0);
-            targetAudio.play();
-            targetAudio.fade(0, audioVolume[audioName], transitionDuration);
+        async function setupAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            gainNode = audioContext.createGain();
             
-            currentAudio = targetAudio;
-            currentAudioIndex = audioSequence.indexOf(audioName);
-            systemState.audioPlaying = true;
-            
-            // Si estamos en modo secuencial, programar el próximo cambio automático
-            if (forcedSequentialPlay && audioName !== 'desconexion') {
-                // Duración automática entre 10-15 segundos para cada audio
-                const autoDuration = minPlayDuration + Math.random() * 10000;
-                setTimeout(() => {
-                    if (forcedSequentialPlay && mouseInCanvas) {
-                        playNextInSequence();
-                    }
-                }, autoDuration);
-            }
-        } catch (e) {
-            logDebug(`Error al iniciar nuevo audio: ${e.message}`);
-            systemState.audioPlaying = false;
+            audioPlayer.loop = true;
+            audioPlayer.src = audioFiles[5];
+            audioPlayer.play();
         }
-    }
 
-    // Detectar movimiento del mouse con manejo de errores
-    canvas.addEventListener('mousemove', (e) => {
-        try {
-            if (!hasInteracted) {
-                hasInteracted = true;
-                startAudioTransition('desconexion');
-                
-                // Tras la primera interacción, activar el modo de secuencia estricta
-                setTimeout(() => {
-                    forcedSequentialPlay = true;
-                    playNextInSequence(); // Comenzar la secuencia con agitación después de la desconexión inicial
-                }, 2000);
-            }
+        function transitionTrack(newTrack) {
+            gainNode.gain.setValueAtTime(1, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + fadeDuration);
             
-            const now = Date.now();
-            const dx = e.clientX - lastPos.x;
-            const dy = e.clientY - lastPos.y;
-            const timeDelta = now - lastTime;
-            
-            // Calcular velocidad con suavizado
-            if (timeDelta > 0) {
-                const instantSpeed = Math.sqrt(dx * dx + dy * dy) / timeDelta;
-                mouseSpeed = mouseSpeed * 0.9 + instantSpeed * 0.1; // Suavizado
-                systemState.mouseSpeed = mouseSpeed;
-            }
-            
-            // Actualizar posición y tiempo
-            lastPos = { x: e.clientX, y: e.clientY };
-            lastTime = now;
-            
-            // Resetear contador de inactividad
-            if (mouseSpeed > 0.005) {
-                mouseStillTime = now;
-            }
-            
-            // Si no estamos en modo de secuencia forzada, seleccionar audio basado en velocidad
-            if (!forcedSequentialPlay) {
-                const audioName = selectAudioBasedOnInteraction();
-                if (audioName && audioSequence[currentAudioIndex] !== audioName) {
-                    startAudioTransition(audioName);
-                }
-            }
-        } catch (e) {
-            logDebug(`Error en evento mousemove: ${e.message}`);
-        }
-    });
-
-    // Detectar cuando el mouse entra y sale del canvas
-    canvas.addEventListener('mouseenter', () => {
-        mouseInCanvas = true;
-        systemState.mouseInCanvas = true;
-        if (!hasInteracted) {
-            hasInteracted = true;
-            startAudioTransition('desconexion');
-            
-            // Tras la primera interacción, activar el modo de secuencia estricta
             setTimeout(() => {
-                forcedSequentialPlay = true;
-                playNextInSequence(); // Comenzar la secuencia con agitación
-            }, 2000);
-        } else if (forcedSequentialPlay) {
-            // Si volvemos a entrar, continuar desde donde estábamos
-            const currentAudioName = audioSequence[currentAudioIndex];
-            startAudioTransition(currentAudioName);
+                audioPlayer.pause();
+                isLooping = false;
+                currentTrack = newTrack;
+                playNewTrack();
+            }, fadeDuration * 1000);
         }
-    });
 
-    canvas.addEventListener('mouseleave', () => {
-        mouseInCanvas = false;
-        systemState.mouseInCanvas = false;
-        startAudioTransition('desconexion');
-    });
-
-    // Iniciar con el audio de desconexión al cargar el documento
-    document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-            logDebug("DOM cargado, iniciando audio de desconexión");
-            startAudioTransition('desconexion');
-        }, 500);
-    });
-
-    // Verificar el estado de carga de los audios
-    setInterval(() => {
-        if (audioLoadCount === audioFiles.length) {
-            logDebug("Todos los audios cargados correctamente");
-        } else if (audioErrorCount > 0) {
-            logDebug(`Cargados ${audioLoadCount}/${audioFiles.length}, con ${audioErrorCount} errores`);
-        }
-    }, 5000);
-
-    // Simulación de tela
-    const clothWidth = 400;
-    const clothHeight = 300;
-    const numPointsX = 30;
-    const numPointsY = 20;
-    const restDistance = clothWidth / numPointsX;
-
-    class Point {
-        constructor(x, y) {
-            this.x = x;
-            this.y = y;
-            this.originalX = x;
-            this.originalY = y;
-            this.vx = 0;
-            this.vy = 0;
-            this.pinned = false;
-            this.mass = 1;
-        }
-    }
-
-    class Cloth {
-        constructor() {
-            this.points = [];
-
-            for (let y = 0; y <= numPointsY; y++) {
-                for (let x = 0; x <= numPointsX; x++) {
-                    const u = x / numPointsX;
-                    const v = y / numPointsY;
-
-                    const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
-                    const py = canvas.height / 2 - clothHeight / 2 + clothHeight * v;
-
-                    const point = new Point(px, py);
-
-                    if (y === 0) {
-                        point.pinned = true;
-                    }
-
-                    this.points.push(point);
+        function playNewTrack() {
+            audioPlayer.loop = false;
+            audioPlayer.src = audioFiles[currentTrack];
+            audioPlayer.play();
+            
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + fadeDuration);
+            
+            audioPlayer.addEventListener('ended', () => {
+                if (currentTrack < 4) {
+                    currentTrack++;
+                    playNewTrack();
+                } else {
+                    currentTrack = 5;
+                    audioPlayer.loop = true;
+                    audioPlayer.src = audioFiles[5];
+                    audioPlayer.play();
+                    isLooping = true;
                 }
-            }
-
-            this.getPoint = (x, y) => this.points[y * (numPointsX + 1) + x];
-
-            this.constraints = [];
-
-            for (let y = 0; y <= numPointsY; y++) {
-                for (let x = 0; x <= numPointsX; x++) {
-                    if (x < numPointsX) {
-                        this.constraints.push({
-                            p1: this.getPoint(x, y),
-                            p2: this.getPoint(x + 1, y),
-                            distance: restDistance
-                        });
-                    }
-                    if (y < numPointsY) {
-                        this.constraints.push({
-                            p1: this.getPoint(x, y),
-                            p2: this.getPoint(x, y + 1),
-                            distance: restDistance
-                        });
-                    }
-                    if (x < numPointsX && y < numPointsY) {
-                        this.constraints.push({
-                            p1: this.getPoint(x, y),
-                            p2: this.getPoint(x + 1, y + 1),
-                            distance: Math.sqrt(restDistance * restDistance * 2)
-                        });
-                        this.constraints.push({
-                            p1: this.getPoint(x + 1, y),
-                            p2: this.getPoint(x, y + 1),
-                            distance: Math.sqrt(restDistance * restDistance * 2)
-                        });
-                    }
-                }
-            }
+            }, {once: true});
         }
 
-        update(windX, windY) {
-            this.points.forEach(point => {
-                if (!point.pinned) {
-                    const forceX = windX;
-                    const forceY = windY + 0.5 * 0.098;
+        function drawVisualization() {
+            requestAnimationFrame(drawVisualization);
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
 
-                    point.vx += forceX / point.mass;
-                    point.vy += forceY / point.mass;
-
-                    point.vx *= 0.97;
-                    point.vy *= 0.97;
-
-                    point.x += point.vx;
-                    point.y += point.vy;
-
-                    const dx = point.x - point.originalX;
-                    const dy = point.y - point.originalY;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-
-                    if (distance > 200) {
-                        const angle = Math.atan2(dy, dx);
-                        point.x = point.originalX + 200 * Math.cos(angle);
-                        point.y = point.originalY + 200 * Math.sin(angle);
-                    }
-                }
-            });
-
-            for (let i = 0; i < 10; i++) {
-                this.constraints.forEach(constraint => {
-                    const dx = constraint.p2.x - constraint.p1.x;
-                    const dy = constraint.p2.y - constraint.p1.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    const difference = distance - constraint.distance;
-                    const adjustX = difference * dx / distance * 0.5;
-                    const adjustY = difference * dy / distance * 0.5;
-
-                    if (!constraint.p1.pinned) {
-                        constraint.p1.x -= adjustX;
-                        constraint.p1.y -= adjustY;
-                    }
-                    if (!constraint.p2.pinned) {
-                        constraint.p2.x += adjustX;
-                        constraint.p2.y += adjustY;
-                    }
-                });
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 2;
+            for(let x = 0; x < canvas.width; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
             }
-        }
-
-        draw() {
+            
+            const waveIntensity = dataArray[30] / 255 * 60;
+            const baseHeight = canvas.height * 0.4;
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             ctx.beginPath();
-            for (let y = 0; y < numPointsY; y++) {
-                for (let x = 0; x < numPointsX; x++) {
-                    const p1 = this.getPoint(x, y);
-                    const p2 = this.getPoint(x + 1, y);
-                    const p3 = this.getPoint(x + 1, y + 1);
-                    const p4 = this.getPoint(x, y + 1);
+            ctx.moveTo(0, baseHeight);
+            for(let i = 0; i < canvas.width; i++) {
+                const y = baseHeight + Math.sin(i * 0.1 + Date.now() * 0.005) * waveIntensity;
+                ctx.lineTo(i, y);
+            }
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.closePath();
+            ctx.fill();
+        }
 
-                    ctx.moveTo(p1.x, p1.y);
-                    ctx.lineTo(p2.x, p2.y);
-                    ctx.lineTo(p3.x, p3.y);
-                    ctx.lineTo(p4.x, p4.y);
-                    ctx.lineTo(p1.x, p1.y);
+        function handleInput(e) {
+            const currentTime = Date.now();
+            const currentX = e.clientX || (e.touches[0] ? e.touches[0].clientX : 0);
+            
+            if (lastPosition !== 0) {
+                const velocity = Math.abs(currentX - lastPosition) / (currentTime - lastTime);
+                
+                if (velocity > VELOCITY_THRESHOLD && isLooping) {
+                    transitionTrack(0);
+                } else if (isLooping) {
+                    transitionTrack(1);
                 }
             }
-            ctx.strokeStyle = '#fff';
-            ctx.stroke();
-        }
-    }
-
-    const cloth = new Cloth();
-
-    // Adaptación para dispositivos táctiles
-    let touchX = null;
-    let touchY = null;
-    let lastTouchTime = 0;
-    let touchSpeed = 0;
-
-    canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        const touch = e.touches[0];
-        touchX = touch.clientX;
-        touchY = touch.clientY;
-        lastPos = { x: touchX, y: touchY };
-        lastTime = Date.now();
-        mouseInCanvas = true;
-        systemState.mouseInCanvas = true;
-
-        if (!hasInteracted) {
-            hasInteracted = true;
-            startAudioTransition('desconexion');
-
-            // Tras la primera interacción, activar el modo de secuencia estricta
-            setTimeout(() => {
-                forcedSequentialPlay = true;
-                playNextInSequence(); // Comenzar la secuencia con agitación
-            }, 2000);
-        } else if (forcedSequentialPlay) {
-            // Si volvemos a entrar, continuar desde donde estábamos
-            const currentAudioName = audioSequence[currentAudioIndex];
-            startAudioTransition(currentAudioName);
-        }
-    });
-
-    canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        const touch = e.touches[0];
-        const now = Date.now();
-        const dx = touch.clientX - lastPos.x;
-        const dy = touch.clientY - lastPos.y;
-        const timeDelta = now - lastTime;
-
-        // Calcular velocidad con suavizado
-        if (timeDelta > 0) {
-            const instantSpeed = Math.sqrt(dx * dx + dy * dy) / timeDelta;
-            touchSpeed = touchSpeed * 0.9 + instantSpeed * 0.1; // Suavizado
-            mouseSpeed = touchSpeed;
-            systemState.mouseSpeed = touchSpeed;
+            
+            lastPosition = currentX;
+            lastTime = currentTime;
         }
 
-        // Actualizar posición y tiempo
-        lastPos = { x: touch.clientX, y: touch.clientY };
-        lastTime = now;
-        mouseStillTime = now;
+        // Event listeners
+        canvas.addEventListener('touchstart', handleInput);
+        canvas.addEventListener('touchmove', handleInput);
+        canvas.addEventListener('touchend', () => lastPosition = 0);
+        canvas.addEventListener('mousedown', handleInput);
+        canvas.addEventListener('mousemove', (e) => { if(e.buttons === 1) handleInput(e) });
+        canvas.addEventListener('mouseup', () => lastPosition = 0);
 
-        // Si no estamos en modo de secuencia forzada, seleccionar audio basado en velocidad
-        if (!forcedSequentialPlay) {
-            const audioName = selectAudioBasedOnInteraction();
-            if (audioName && audioSequence[currentAudioIndex] !== audioName) {
-                startAudioTransition(audioName);
-            }
-        }
-    });
+        window.addEventListener('load', async () => {
+            initCanvas();
+            await setupAudio();
+            drawVisualization();
+        });
 
-    canvas.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        mouseInCanvas = false;
-        systemState.mouseInCanvas = false;
-        startAudioTransition('desconexion');
-    });
-
-    // Ajustar la fuerza del viento basada en el volumen del audio
-    function getWindForce() {
-        let windForce = baseWindForce;
-        if (currentAudio && currentAudio.playing()) {
-            windForce += currentAudio.volume() * volumeFactor / 10000; // Dividir por 10000 para reducir la fuerza
-        }
-        return windForce;
-    }
-
-    // Bucle de animación
-    function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Obtener la fuerza del viento basada en el volumen del audio actual
-        const wind = getWindForce();
-
-        // Actualizar y dibujar la tela
-        cloth.update(wind, 0.1);
-        cloth.draw();
-
-        requestAnimationFrame(animate);
-    }
-
-    animate();
-</script>
+        window.addEventListener('resize', initCanvas);
+    </script>
 </body>
 </html>
