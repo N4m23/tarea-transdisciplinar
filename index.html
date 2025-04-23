@@ -112,7 +112,7 @@
             constructor() {
                 this.points = [];
                 for (let y = 0; y <= numPointsY; y++) {
-                    for (let x = 0; x <= numPointsX; x++) {
+                    for (let x = 0; x < numPointsX; x++) {
                         const u = x / numPointsX;
                         const v = y / numPointsY;
                         const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
@@ -340,9 +340,6 @@
 
 </html>
 
-</body>
-
-</html>
 
 
 
