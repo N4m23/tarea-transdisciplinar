@@ -112,7 +112,7 @@
             constructor() {
                 this.points = [];
                 for (let y = 0; y <= numPointsY; y++) {
-                    for (let x = 0; x < numPointsX; x++) {
+                    for (let x = 0; x <= numPointsX; x++) {
                         const u = x / numPointsX;
                         const v = y / numPointsY;
                         const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
@@ -263,6 +263,9 @@
             currentAudio = audioToPlay;
             audioToPlay.play();
         }
+
+        //Mantener los audios mientras se interactúa
+        let currentAudioName = "";
         // Touch
         function handlePointerMove(event) {
             event.preventDefault();
@@ -288,12 +291,19 @@
             lastInteractionTime = performance.now();
 
             //Ajuste de audio
+            let newAudioName = "";
             if (movementSpeed > 5) {
-                playAudio('agitacion.mp3');
+                newAudioName = 'agitacion.mp3';
             } else if (movementSpeed > 2) {
-                playAudio('presencia.mp3');
+                newAudioName = 'presencia.mp3';
             } else {
-                playAudio('suspension.mp3');
+                newAudioName = 'suspension.mp3';
+            }
+
+            //Tocar los audios
+            if (newAudioName != currentAudioName) {
+                playAudio(newAudioName);
+                currentAudioName = newAudioName;
             }
 
             // Fuerza a la tela
@@ -339,6 +349,7 @@
 </body>
 
 </html>
+
 
 
 
