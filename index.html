@@ -1,71 +1,606 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Compresión y Expansión Textil Digital</title>
+    <title>CompresiÃ³n y ExpansiÃ³n</title>
     <style>
         body {
             margin: 0;
+            padding: 0;
+            background-color: #000;
             overflow: hidden;
-            background-color: #f0f0f0; /* Un gris claro */
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-        }
-
-        #tela {
-            width: 300px;
-            height: 300px;
-            background-color: #ddd; /* Un gris más oscuro para la tela */
+            color: #fff;
+            font-family: Arial, sans-serif;
             cursor: pointer;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* Ligera sombra para dar relieve */
-            transition: transform 0.2s ease, box-shadow 0.2s ease; /* Transiciones suaves */
+            touch-action: none;
         }
 
-        #tela.active {
-            transform: scale(1.1); /* Pequeño aumento al tocar */
-            box-shadow: 0 8px 16px rgba(0,0,0,0.2); /* Sombra más pronunciada */
+        canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            touch-action: none;
+        }
+
+        #start-button {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 10px 20px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 100;
         }
     </style>
 </head>
+
 <body>
-    <div id="tela"></div>
-    <audio id="sonidoRespiracion" preload="auto">
-        <source src="respiracion.mp3" type="audio/mpeg">
-        Tu navegador no soporta el elemento de audio.
-    </audio>
+    <canvas id="canvas"></canvas>
+    <button id="start-button">Iniciar Experiencia</button>
 
     <script>
-        const tela = document.getElementById('tela');
-        const sonidoRespiracion = document.getElementById('sonidoRespiracion');
+        // ConfiguraciÃ³n del canvas
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('start-button');
 
-        tela.addEventListener('mousedown', function() {
-            tela.classList.add('active');
-            sonidoRespiracion.currentTime = 0; // Reinicia el sonido
-            sonidoRespiracion.play();
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Desactivar el menÃº contextual en dispositivos tÃ¡ctiles
+        canvas.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+        canvas.style.touchAction = 'none';
+
+        // ConfiguraciÃ³n de archivos de audio
+        const audioFiles = [
+            'agitacion.mp3',
+            'incertidumbre.mp3',
+            'atencion.mp3',
+            'presencia.mp3',
+            'suspension.mp3',
+            'desconexion.mp3'
+        ];
+
+        let currentAudio = null;
+        let movementActive = false;
+        let lastAudioName = null;
+        let interactionActive = false;
+
+        // Variables para seguimiento de movimiento
+        let lastMovementTime = 0;
+        let isMovementConstant = false;
+        let movementHistory = [];
+        let clickTimer = null;
+        let lastClickTime = 0;
+
+        // AutomatizaciÃ³n
+        let inactivityTimeout;
+        const inactivityTime = 10000; // 10 segundos
+        let autoSequence = ['incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
+        let autoSequenceIndex = 0;
+
+        //Estado del audio
+        let audios = {};
+        let isPlaying = false;
+        let lastInteractionTime = 0;
+        let audioContext = null;
+
+        //Touch
+        let pointerX = canvas.width / 2;
+        let pointerY = canvas.height / 2;
+        let pointerSpeedX = 0;
+        let pointerSpeedY = 0;
+        let totalMovement = 0;
+        let lastPointerX = pointerX;
+        let lastPointerY = pointerY;
+        let movementTimestamps = [];
+
+        //Tela
+        const clothWidth = 400;
+        const clothHeight = 300;
+        const numPointsX = 30;
+        const numPointsY = 20;
+        const restDistance = clothWidth / numPointsX;
+
+        class Point {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.originalX = x;
+                this.originalY = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.pinned = false;
+                this.mass = 1;
+            }
+        }
+
+        class Cloth {
+            constructor() {
+                this.points = [];
+                // Crear puntos de la tela
+                for (let y = 0; y <= numPointsY; y++) {
+                    for (let x = 0; x <= numPointsX; x++) {
+                        const u = x / numPointsX;
+                        const v = y / numPointsY;
+
+                        // PosiciÃ³n inicial en forma de curva suave
+                        const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
+                        const py = canvas.height / 2 - clothHeight / 2 + clothHeight * v;
+
+                        const point = new Point(px, py);
+
+                        // Fijar solo los puntos superiores para que cuelgue
+                        if (y === 0) {
+                            point.pinned = true;
+                        }
+
+                        this.points.push(point);
+                    }
+                }
+
+                this.constraints = [];
+                this.createConstraints();
+            }
+            getPoint(x, y) {
+                return this.points[y * (numPointsX + 1) + x];
+            }
+
+            createConstraints() {
+                // Crear restricciones horizontales
+                for (let y = 0; y <= numPointsY; y++) {
+                    for (let x = 0; x < numPointsX; x++) {
+                        this.constraints.push({
+                            p1: this.getPoint(x, y),
+                            p2: this.getPoint(x + 1, y),
+                            distance: restDistance
+                        });
+                    }
+                }
+
+                // Crear restricciones verticales
+                for (let x = 0; x <= numPointsX; x++) {
+                    for (let y = 0; y < numPointsY; y++) {
+                        this.constraints.push({
+                            p1: this.getPoint(x, y),
+                            p2: this.getPoint(x, y + 1),
+                            distance: restDistance
+                        });
+                    }
+                }
+            }
+
+            update(dt) {
+                const GRAVITY = 0.0981 * dt;
+                const DAMPING = 0.97;
+
+                for (let i = 0; i < this.points.length; i++) {
+                    const point = this.points[i];
+                    if (!point.pinned) {
+                        point.vy += GRAVITY;
+                        const prevX = point.x;
+                        const prevY = point.y;
+                        point.x += point.vx;
+                        point.y += point.vy;
+                        point.vx = (point.x - prevX) * DAMPING;
+                        point.vy = (point.y - prevY) * DAMPING;
+                    }
+                }
+                const iterations = 15;
+                for (let i = 0; i < iterations; i++) {
+                    for (let j = 0; j < this.constraints.length; j++) {
+                        const constraint = this.constraints[j];
+                        const p1 = constraint.p1;
+                        const p2 = constraint.p2;
+
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const currentDistance = Math.sqrt(dx * dx + dy * dy);
+
+                        if (currentDistance > 0) {
+                            // Calcular direcciÃ³n
+                            const diff = (constraint.distance - currentDistance) / currentDistance;
+
+                            // Distribuir correcciÃ³n
+                            const percent1 = p1.pinned ? 0 : 0.5;
+                            const percent2 = p2.pinned ? 0 : 0.5;
+
+                            const offsetX = dx * diff;
+                            const offsetY = dy * diff;
+
+                            p1.x -= offsetX * percent1;
+                            p1.y -= offsetY * percent1;
+
+                            p2.x += offsetX * percent2;
+                            p2.y += offsetY * percent2;
+                        }
+                    }
+                }
+            }
+
+            draw() {
+                // Asegurarse de que el canvas estÃ© limpio
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Color base para la tela
+                ctx.fillStyle = "#ffffff";
+                ctx.strokeStyle = "#cccccc";
+                ctx.lineWidth = 1;
+
+                // Dibujar la tela con degradado suave
+                for (let y = 0; y < numPointsY; y++) {
+                    for (let x = 0; x < numPointsX; x++) {
+                        const p1 = this.getPoint(x, y);
+                        const p2 = this.getPoint(x + 1, y);
+                        const p3 = this.getPoint(x + 1, y + 1);
+                        const p4 = this.getPoint(x, y + 1);
+
+                        // Crear gradiente para simular sombras
+                        const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
+                        const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
+
+                        // Calcular normal aproximada para efectos de iluminaciÃ³n
+                        const nx = (p3.y - p1.y);
+                        const ny = -(p3.x - p1.x);
+                        const norm = Math.sqrt(nx * nx + ny * ny) || 1; // Evitar divisiÃ³n por cero
+
+                        // Normalizar normal
+                        const normalX = nx / norm;
+                        const normalY = ny / norm;
+
+                        // Calcular valor de iluminaciÃ³n basado en la normal
+                        const lightX = 0.5;
+                        const lightY = -1;
+                        const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
+
+                        // Color basado en iluminaciÃ³n (aseguramos valores vÃ¡lidos)
+                        const brightness = Math.max(0, Math.min(255, Math.floor(210 + lightIntensity * 45)));
+
+                        // Dibujar cuadrilÃ¡tero
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.lineTo(p3.x, p3.y);
+                        ctx.lineTo(p4.x, p4.y);
+                        ctx.closePath();
+
+                        // Gradiente radial para simular pliegues y ondulaciones
+                        try {
+                            const gradient = ctx.createRadialGradient(
+                                centerX, centerY, 0,
+                                centerX, centerY, restDistance * 2
+                            );
+
+                            gradient.addColorStop(0, `rgba(${brightness}, ${brightness}, ${brightness}, 0.9)`);
+                            gradient.addColorStop(1, `rgba(${brightness-20}, ${brightness-20}, ${brightness-20}, 0.85)`);
+
+                            ctx.fillStyle = gradient;
+                            ctx.fill();
+                        } catch (e) {
+                            // Fallback si hay problemas con el gradiente
+                            ctx.fillStyle = `rgba(200, 200, 200, 0.8)`;
+                            ctx.fill();
+                        }
+
+                        // LÃ­neas muy suaves para simular pliegues
+                        ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        const cloth = new Cloth();
+
+        // Inicializar la experiencia
+        startButton.addEventListener('click', function() {
+            startButton.style.display = 'none';
+            initAudioContext();
+            initExperience();
+            animate();
         });
 
-        tela.addEventListener('mouseup', function() {
-            tela.classList.remove('active');
-            sonidoRespiracion.pause(); // Pausa el sonido al soltar
+        function initExperience() {
+            // Iniciar con el audio presencia
+            setTimeout(() => {
+                playAudio('presencia.mp3');
+            }, 500);
+            
+            // Configurar los event listeners despuÃ©s de que se ha iniciado
+            canvas.addEventListener('mousemove', handlePointerMove);
+            canvas.addEventListener('touchmove', handlePointerMove, { passive: false });
+            canvas.addEventListener('click', handleCanvasClick);
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+            canvas.addEventListener('touchend', handleTouchEnd);
+            canvas.addEventListener('mouseup', handleTouchEnd);
+            canvas.addEventListener('mouseleave', handleTouchEnd);
+            
+            // Iniciar el temporizador de inactividad
+            startInactivityTimer();
+        }
+
+        // Inicializa el audio - CORREGIDO
+        function initAudioContext() {
+            // La polÃ­tica de autoplay requiere una interacciÃ³n del usuario
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Crear elementos de audio para cada archivo
+            audioFiles.forEach(file => {
+                const audio = new Audio();
+                audio.volume = 0.7;
+                audio.preload = 'auto';
+                audio.src = file;
+                audios[file] = audio;
+                
+                // Asegurarse de que se pueda reproducir
+                audio.load();
+            });
+            
+            console.log("Audio context initialized:", audioContext.state);
+        }
+
+        //Inactividad
+        function startInactivityTimer() {
+            clearTimeout(inactivityTimeout);
+            inactivityTimeout = setTimeout(() => {
+                playAudio('desconexion.mp3');
+            }, inactivityTime);
+        }
+
+        // Resetear el tiempo
+        function resetInactivityTimer() {
+            clearTimeout(inactivityTimeout);
+            startInactivityTimer();
+        }
+
+        //Touch
+        function handleTouchStart(event) {
+            event.preventDefault();
+            // Verificar si el toque estÃ¡ dentro de los lÃ­mites de la tela
+            const rect = canvas.getBoundingClientRect();
+            const x = event.touches[0].clientX - rect.left;
+            const y = event.touches[0].clientY - rect.top;
+
+            if (isInsideCloth(x, y)) {
+                interactionActive = true; // Activar interacciÃ³n al tocar la tela
+                lastPointerX = event.touches[0].clientX;
+                lastPointerY = event.touches[0].clientY;
+                movementActive = true;
+                
+                // Reproducir audio de presencia al inicio de la interacciÃ³n
+                playAudio('presencia.mp3');
+            }
+        }
+
+        function handleTouchEnd(event) {
+            event.preventDefault();
+            movementActive = false;
+            interactionActive = false;
+        }
+
+        // Interacciones click
+        function handleCanvasClick(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            if (isInsideCloth(x, y)) {
+                const currentTime = performance.now();
+                const timeSinceLastClick = currentTime - lastClickTime;
+                lastClickTime = currentTime;
+                
+                // Determinar si es un clic rÃ¡pido o lento
+                if (timeSinceLastClick < 500) { // Menos de 500ms entre clics se considera rÃ¡pido
+                    playAudio('atencion.mp3');
+                } else {
+                    playAudio('presencia.mp3');
+                }
+                
+                resetInactivityTimer();
+            }
+        }
+
+        // Tocar los audios - CORREGIDO
+        function playAudio(audioName) {
+            console.log("Intentando reproducir:", audioName);
+            resetInactivityTimer();
+            
+            // No reiniciar si ya estÃ¡ sonando el mismo audio y estÃ¡ activo
+            if (currentAudio && lastAudioName === audioName && !currentAudio.paused) {
+                return;
+            }
+            
+            // Detener el audio anterior si existe
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+            }
+            
+            const audioToPlay = audios[audioName];
+            if (!audioToPlay) {
+                console.error("Audio no encontrado:", audioName);
+                return;
+            }
+            
+            // Asegurar que el audio comienza desde el principio
+            audioToPlay.currentTime = 0;
+            
+            // Reproducir con promise para capturar posibles errores
+            const playPromise = audioToPlay.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    console.log("Audio reproducido con Ã©xito:", audioName);
+                    currentAudio = audioToPlay;
+                    lastAudioName = audioName;
+                }).catch(error => {
+                    console.error("Error reproduciendo audio:", error);
+                    // Intentar reproducir de nuevo en caso de error
+                    setTimeout(() => {
+                        audioToPlay.play().catch(e => console.error("Reintento fallido:", e));
+                    }, 100);
+                });
+            }
+            
+            // Si el usuario sigue interactuando, repetir el audio al terminar
+            audioToPlay.onended = function() {
+                if (interactionActive && lastAudioName === audioName) {
+                    audioToPlay.currentTime = 0;
+                    audioToPlay.play().catch(e => console.error("Error en repeticiÃ³n:", e));
+                }
+            };
+        }
+
+        // FunciÃ³n para analizar el patrÃ³n de movimiento
+        function analyzeMovement(speed) {
+            // AÃ±adir el tiempo actual y la velocidad al historial
+            const now = performance.now();
+            movementTimestamps.push({time: now, speed: speed});
+            
+            // Mantener solo los Ãºltimos 2 segundos de movimientos
+            while (movementTimestamps.length > 0 && now - movementTimestamps[0].time > 2000) {
+                movementTimestamps.shift();
+            }
+            
+            // Calcular si el movimiento es constante
+            if (movementTimestamps.length >= 5) {
+                let isConstant = true;
+                const avgSpeed = movementTimestamps.reduce((sum, item) => sum + item.speed, 0) / movementTimestamps.length;
+                
+                // Determinar si es un movimiento constante basado en la consistencia de la velocidad
+                for (let i = 0; i < movementTimestamps.length; i++) {
+                    const speedDiff = Math.abs(movementTimestamps[i].speed - avgSpeed);
+                    if (speedDiff > avgSpeed * 0.5) { // Permitir 50% de variaciÃ³n
+                        isConstant = false;
+                        break;
+                    }
+                }
+                
+                return {
+                    isConstant: isConstant,
+                    avgSpeed: avgSpeed
+                };
+            }
+            
+            return {isConstant: false, avgSpeed: speed};
+        }
+
+        // Touch
+        function handlePointerMove(event) {
+            event.preventDefault();
+            resetInactivityTimer();
+
+            let clientX, clientY;
+            if (event.touches && event.touches.length > 0) {
+                clientX = event.touches[0].clientX;
+                clientY = event.touches[0].clientY;
+            } else {
+                clientX = event.clientX;
+                clientY = event.clientY;
+            }
+            const rect = canvas.getBoundingClientRect();
+            const x = (clientX - rect.left);
+            const y = (clientY - rect.top);
+
+            if (isInsideCloth(x, y)) {
+                interactionActive = true;
+
+                // Calcular velocidad de movimiento
+                pointerSpeedX = clientX - lastPointerX;
+                pointerSpeedY = clientY - lastPointerY;
+                
+                const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
+                const movementAnalysis = analyzeMovement(movementSpeed);
+                
+                // Actualizar posiciÃ³n para el siguiente frame
+                lastPointerX = clientX;
+                lastPointerY = clientY;
+                
+                // Decidir quÃ© audio reproducir basado en el patrÃ³n de movimiento
+                let audioToPlay;
+                
+                if (movementAnalysis.isConstant && movementAnalysis.avgSpeed > 1) {
+                    audioToPlay = 'incertidumbre.mp3';
+                } else if (movementSpeed > 8) {
+                    audioToPlay = 'agitacion.mp3';
+                } else if (movementSpeed > 2) {
+                    audioToPlay = 'suspension.mp3';
+                } else {
+                    audioToPlay = 'suspension.mp3';
+                }
+                
+                playAudio(audioToPlay);
+                
+                // Fuerza a la tela
+                const pointerForceRadius = 150;
+                const pointerForce = 0.5;
+
+                for (let i = 0; i < cloth.points.length; i++) {
+                    const point = cloth.points[i];
+                    const dx = point.x - clientX;
+                    const dy = point.y - clientY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < pointerForceRadius) {
+                        const force = (1 - dist / pointerForceRadius) * pointerForce;
+                        point.vx += (pointerSpeedX * force) / point.mass;
+                        point.vy += (pointerSpeedY * force) / point.mass;
+                    }
+                }
+            } else {
+                interactionActive = false;
+                if (currentAudio) {
+                    currentAudio.pause();
+                }
+            }
+        }
+        
+        function isInsideCloth(x, y) {
+            const clothLeft = canvas.width / 2 - clothWidth / 2;
+            const clothTop = canvas.height / 2 - clothHeight / 2;
+            return x >= clothLeft && x <= clothLeft + clothWidth && y >= clothTop && y <= clothTop + clothHeight;
+        }
+
+        //Redimensionar
+        window.addEventListener('resize', function() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
         });
 
-        tela.addEventListener('mouseout', function() {
-            tela.classList.remove('active');
-            sonidoRespiracion.pause(); // Asegura que el sonido se detenga al salir
-        });
+        //AnimaciÃ³n
+        let lastTime = performance.now();
 
-        // Ajusta el volumen en función de la interacción
-        tela.addEventListener('mouseover', function() {
-            sonidoRespiracion.volume = 0.5; // Volumen medio al entrar
-        });
+        function animate() {
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 16;
+            lastTime = currentTime;
 
-        tela.addEventListener('mouseleave', function() {
-            sonidoRespiracion.volume = 0.2; // Volumen bajo al salir
-        });
+            cloth.update(deltaTime);
+            cloth.draw();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Iniciar solo la animaciÃ³n, el audio se iniciarÃ¡ con el botÃ³n
+        cloth.draw();
     </script>
 </body>
+
 </html>
 
