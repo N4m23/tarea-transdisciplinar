@@ -63,32 +63,32 @@
 
         // Para automatizar la reproducción
         let inactivityTimeout;
-        const inactivityTime = 10000;
+        const inactivityTime = 10000; // Valor por defecto
         let autoSequence = ['incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
         let autoSequenceIndex = 0;
 
-        //Inicializar eventos
+        //Eventos
         canvas.addEventListener('mousemove', handlePointerMove);
         canvas.addEventListener('touchmove', handlePointerMove);
         canvas.addEventListener('click', handleCanvasClick);
         canvas.addEventListener('touchstart', handleTouchStart);
 
-        // Crear objetos de audio
+        //Objetos audio
         let audios = [];
 
-        // Estado de reproducción
+        //Estado
         let isPlaying = false;
         let lastInteractionTime = 0;
         let audioContext;
 
-        // Variables para la interacción del mouse/táctil
+        //Puntero
         let pointerX = canvas.width / 2;
         let pointerY = canvas.height / 2;
         let pointerSpeedX = 0;
         let pointerSpeedY = 0;
         let totalMovement = 0;
 
-        // Simulación de tela
+        //Simulación de tela
         const clothWidth = 400;
         const clothHeight = 300;
         const numPointsX = 30;
@@ -142,7 +142,6 @@
                         });
                     }
                 }
-
                 this.getPoint = (x, y) => this.points[y * (numPointsX + 1) + x];
             }
 
@@ -162,7 +161,6 @@
                         point.vy = (point.y - prevY) * DAMPING;
                     }
                 }
-
                 const iterations = 15;
                 for (let i = 0; i < iterations; i++) {
                     for (let j = 0; j < this.constraints.length; j++) {
@@ -213,71 +211,62 @@
 
         const cloth = new Cloth();
 
-        // Iniciar contexto de audio al primer toque
+        // Touch
         function handleTouchStart() {
             if (!audioContext) {
                 initAudioContext();
             }
         }
-        // Función para inicializar el contexto de audio
+        // Inicializa el audio
         function initAudioContext() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            audioContext = new(window.AudioContext || window.webkitAudioContext)();
             audios = audioFiles.map(file => {
                 const audio = new Audio(file);
                 audio.volume = 0.7;
-                return audio;
+                return audio
             });
-            //Inicar la secuencia con el primer audio
+
             playAudio("incertidumbre.mp3");
         }
-        // Para automatizar la reproducción
+        //Inactividad
         function startInactivityTimer() {
             inactivityTimeout = setTimeout(() => {
-                playAudio('incertidumbre.mp3'); // reproduce incertidumbre.mp3
+                playAudio('incertidumbre.mp3');
             }, inactivityTime);
         }
-
-        // Para reiniciar el contador
+        // Resetear el tiempo
         function resetInactivityTimer() {
             clearTimeout(inactivityTimeout);
             startInactivityTimer();
         }
-
-        // Interacciones
+        // Interacciones click
         function handleCanvasClick(e) {
-            playAudio('atencion.mp3'); // reproduce entrecortada.mp3
+            playAudio('atencion.mp3');
             resetInactivityTimer();
         }
-
-        // Función para reproducir audio con interrupciones
+        // Tocar los audios
         function playAudio(audioName) {
-            //Reinciar el tiempo
-            resetInactivityTimer()
-
-            //Verificar para el contexto
+            resetInactivityTimer();
             if (!audioContext) {
                 initAudioContext();
             }
-            //Buscar y tocar el audio
+            //Buscar audios
             let audioToPlay = audios.find(audio => audio.src.includes(audioName));
             if (!audioToPlay) {
-                return; // Si el audio no se encuentra, salir de la función
+                return;
             }
-
+            //Evitar loops
             if (currentAudio && currentAudio !== audioToPlay) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
             }
-            //Tocar
             currentAudio = audioToPlay;
             audioToPlay.play();
         }
-
         // Touch
         function handlePointerMove(event) {
             event.preventDefault();
 
-            // Coordenadas touch o mouse
             let clientX, clientY;
             if (event.touches && event.touches.length > 0) {
                 clientX = event.touches[0].clientX;
@@ -324,8 +313,7 @@
                 }
             }
         }
-
-        // Iniciar
+        // Iniciar automatización
         startInactivityTimer();
 
         //Redimensionar
@@ -342,12 +330,16 @@
             const deltaTime = (currentTime - lastTime) / 16;
             lastTime = currentTime;
             cloth.update(deltaTime);
-            cloth.draw();
+            cloth.draw(); //Llamar a la función para renderizar
             requestAnimationFrame(animate);
         }
 
         animate();
     </script>
+</body>
+
+</html>
+
 </body>
 
 </html>
