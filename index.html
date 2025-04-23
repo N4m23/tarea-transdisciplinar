@@ -46,7 +46,6 @@
         canvas.addEventListener('contextmenu', function(e) {
             e.preventDefault();
         });
-        //touch
         canvas.style.touchAction = 'none';
 
         // Configuración de archivos de audio
@@ -60,35 +59,36 @@
         ];
 
         let currentAudio = null;
+        let movementActive = false;
 
-        // Para automatizar la reproducción
+        // Automatización
         let inactivityTimeout;
-        const inactivityTime = 10000; // Valor por defecto
+        const inactivityTime = 10000;
         let autoSequence = ['incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
         let autoSequenceIndex = 0;
 
-        //Eventos
+        //Crear objetos
         canvas.addEventListener('mousemove', handlePointerMove);
         canvas.addEventListener('touchmove', handlePointerMove);
         canvas.addEventListener('click', handleCanvasClick);
         canvas.addEventListener('touchstart', handleTouchStart);
+        canvas.addEventListener('touchend', handleTouchEnd);
+        canvas.addEventListener('mouseup', handleTouchEnd);
 
-        //Objetos audio
+        //Estado del audio
         let audios = [];
-
-        //Estado
         let isPlaying = false;
         let lastInteractionTime = 0;
         let audioContext;
 
-        //Puntero
+        //Touch
         let pointerX = canvas.width / 2;
         let pointerY = canvas.height / 2;
         let pointerSpeedX = 0;
         let pointerSpeedY = 0;
         let totalMovement = 0;
 
-        //Simulación de tela
+        //Tela
         const clothWidth = 400;
         const clothHeight = 300;
         const numPointsX = 30;
@@ -177,7 +177,7 @@
                         p1.x -= dx * diff * percent;
                         p1.y -= dy * diff * percent;
                         p2.x += dx * diff * (1 - percent);
-                        p2.y += dy * diff * (1 - percent);
+                        p2.y += dy * diff * percent;
                     }
                 }
             }
@@ -210,12 +210,16 @@
         }
 
         const cloth = new Cloth();
-
-        // Touch
+        //Touch
         function handleTouchStart() {
             if (!audioContext) {
                 initAudioContext();
             }
+            movementActive = true;
+        }
+
+        function handleTouchEnd() {
+            movementActive = false;
         }
         // Inicializa el audio
         function initAudioContext() {
@@ -263,12 +267,10 @@
             currentAudio = audioToPlay;
             audioToPlay.play();
         }
-
-        //Mantener los audios mientras se interactúa
-        let currentAudioName = "";
         // Touch
         function handlePointerMove(event) {
             event.preventDefault();
+            resetInactivityTimer()
 
             let clientX, clientY;
             if (event.touches && event.touches.length > 0) {
@@ -291,19 +293,12 @@
             lastInteractionTime = performance.now();
 
             //Ajuste de audio
-            let newAudioName = "";
             if (movementSpeed > 5) {
-                newAudioName = 'agitacion.mp3';
+                playAudio('agitacion.mp3');
             } else if (movementSpeed > 2) {
-                newAudioName = 'presencia.mp3';
+                playAudio('presencia.mp3');
             } else {
-                newAudioName = 'suspension.mp3';
-            }
-
-            //Tocar los audios
-            if (newAudioName != currentAudioName) {
-                playAudio(newAudioName);
-                currentAudioName = newAudioName;
+                playAudio('suspension.mp3');
             }
 
             // Fuerza a la tela
@@ -323,6 +318,7 @@
                 }
             }
         }
+
         // Iniciar automatización
         startInactivityTimer();
 
@@ -340,7 +336,7 @@
             const deltaTime = (currentTime - lastTime) / 16;
             lastTime = currentTime;
             cloth.update(deltaTime);
-            cloth.draw(); //Llamar a la función para renderizar
+            cloth.draw();
             requestAnimationFrame(animate);
         }
 
@@ -349,6 +345,7 @@
 </body>
 
 </html>
+
 
 
 
