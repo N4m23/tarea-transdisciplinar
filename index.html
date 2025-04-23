@@ -124,28 +124,8 @@
                     }
                 }
                 this.constraints = [];
-                // Crear restricciones horizontales
-                for (let y = 0; y <= numPointsY; y++) {
-                    for (let x = 0; x < numPointsX; x++) {
-                        this.constraints.push({
-                            p1: this.getPoint(x, y),
-                            p2: this.getPoint(x + 1, y),
-                            distance: restDistance
-                        });
-                    }
-                }
-
-                // Crear restricciones verticales
-                for (let x = 0; x <= numPointsX; x++) {
-                    for (let y = 0; y < numPointsY; y++) {
-                        this.constraints.push({
-                            p1: this.getPoint(x, y),
-                            p2: this.getPoint(x, y + 1),
-                            distance: restDistance
-                        });
-                    }
-                }
             }
+
                getPoint(x, y) {
                     return this.points[y * (numPointsX + 1) + x];
                 }
@@ -221,12 +201,18 @@
                     }
                 }
             }
-              draw() {
+
+            draw() {
+                 // Asegurarse de que el canvas esté limpio
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#000";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                // Dibujar la tela con degradado suave
+                // Color base para la tela
+                ctx.fillStyle = "#ffffff";
+                ctx.strokeStyle = "#cccccc";
+                ctx.lineWidth = 1;
+
                 for (let y = 0; y < numPointsY; y++) {
                     for (let x = 0; x < numPointsX; x++) {
                         const p1 = this.getPoint(x, y);
@@ -260,6 +246,7 @@
                         ctx.moveTo(p1.x, p1.y);
                         ctx.lineTo(p2.x, p2.y);
                         ctx.lineTo(p3.x, p3.y);
+                        ctx.lineTo(p4.x, p4.y);
                         ctx.closePath();
 
                         // Gradiente radial para simular pliegues y ondulaciones
@@ -290,7 +277,7 @@
         }
 
         const cloth = new Cloth();
-       cloth.createConstraints(); // Llamar a crear restricciones después de inicializar
+         cloth.createConstraints();
         //Touch
         function handleTouchStart() {
             if (!audioContext) {
@@ -339,82 +326,89 @@
            playAudio('atencion.mp3');
            resetInactivityTimer();
         }
-        // Tocar los audios
+       // Tocar los audios
         function playAudio(audioName) {
-           resetInactivityTimer();
-           if (!audioContext) {
-               initAudioContext();
-           }
-           //Buscar audios
-           let audioToPlay = audios.find(audio => audio.src.includes(audioName));
-           if (!audioToPlay) {
-               return;
-           }
-          //Interumpir
-           if (currentAudio) {
-               currentAudio.pause();
-               currentAudio.currentTime = 0;
-           }
-           currentAudio = audioToPlay;
-           audioToPlay.play().catch(e => console.error("Error al reproducir audio:", e));
+            resetInactivityTimer();
+            if (!audioContext) {
+                initAudioContext();
+            }
+            //Buscar audios
+            let audioToPlay = audios.find(audio => audio.src.includes(audioName));
+              if (!audioToPlay) {
+                    console.warn(`Audio file not found: ${audioName}`);
+                    return;
+                }
+              // Detener el audio actual solo si es diferente al que se va a reproducir
+                if (currentAudio && currentAudio !== audioToPlay) {
+                    currentAudio.pause();
+                    currentAudio.currentTime = 0;
+                }
+
+            currentAudio = audioToPlay;
+           audioToPlay.play().catch(error => {
+                console.error("Playback failed:", error);
+           });
         }
         // Touch
-         function handlePointerMove(event) {
-                event.preventDefault();
-                resetInactivityTimer();
+        function handlePointerMove(event) {
+            event.preventDefault();
+            resetInactivityTimer();
 
-                if (!audioContext) {
-                    initAudioContext();
-                }
+            if (!audioContext) {
+                initAudioContext();
+            }
 
-                let clientX, clientY;
-                if (event.touches && event.touches.length > 0) {
-                    clientX = event.touches[0].clientX;
-                    clientY = event.touches[0].clientY;
-                } else {
-                    clientX = event.clientX;
-                    clientY = event.clientY;
-                }
+            let clientX, clientY;
+            if (event.touches && event.touches.length > 0) {
+                clientX = event.touches[0].clientX;
+                clientY = event.touches[0].clientY;
+            } else {
+                clientX = event.clientX;
+                clientY = event.clientY;
+            }
 
-                //Mover la tela
-                pointerSpeedX = clientX - pointerX;
-                pointerSpeedY = clientY - pointerY;
+            //Mover la tela
+            pointerSpeedX = clientX - pointerX;
+            pointerSpeedY = clientY - pointerY;
 
-                const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
-                totalMovement += distance;
-                const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
-                pointerX = clientX;
-                pointerY = clientY;
-                lastInteractionTime = performance.now();
+            const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
+            totalMovement += distance;
+            const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
+            pointerX = clientX;
+            pointerY = clientY;
+            lastInteractionTime = performance.now();
+    let audioToPlay;
+            //Ajuste de audio
+            if (movementSpeed > 5) {
+                audioToPlay = 'agitacion.mp3';
+            } else if (movementSpeed > 2) {
+                audioToPlay = 'presencia.mp3';
+            } else {
+                audioToPlay = 'suspension.mp3';
+            }
+          if (audioToPlay) {
+                playAudio(audioToPlay);
+            }
 
-                //Ajuste de audio
-                if (movementSpeed > 5) {
-                    playAudio('agitacion.mp3');
-                } else if (movementSpeed > 2) {
-                    playAudio('presencia.mp3');
-                } else {
-                    playAudio('suspension.mp3');
-                }
+            // Fuerza a la tela
+            const pointerForceRadius = 150;
+            const pointerForce = 0.5;
 
-                // Fuerza a la tela
-                const pointerForceRadius = 150;
-                const pointerForce = 0.5;
+            for (let i = 0; i < cloth.points.length; i++) {
+                const point = cloth.points[i];
+                const dx = point.x - pointerX;
+                const dy = point.y - pointerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
 
-                for (let i = 0; i < cloth.points.length; i++) {
-                    const point = cloth.points[i];
-                    const dx = point.x - pointerX;
-                    const dy = point.y - pointerY;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-
-                    if (dist < pointerForceRadius) {
-                        const force = (1 - dist / pointerForceRadius) * pointerForce;
-                        point.vx += (pointerSpeedX * force) / point.mass;
-                        point.vy += (pointerSpeedY * force) / point.mass;
-                    }
+                if (dist < pointerForceRadius) {
+                    const force = (1 - dist / pointerForceRadius) * pointerForce;
+                    point.vx += (pointerSpeedX * force) / point.mass;
+                    point.vy += (pointerSpeedY * force) / point.mass;
                 }
             }
-         // Agregar eventos
-            canvas.addEventListener('mousemove', handlePointerMove);
+        }
+
+             canvas.addEventListener('mousemove', handlePointerMove);
             canvas.addEventListener('touchmove', handlePointerMove);
             canvas.addEventListener('click', handleCanvasClick);
             canvas.addEventListener('touchstart', handleTouchStart);
@@ -434,11 +428,6 @@
                 const deltaTime = (currentTime - lastTime) / 16; // Normalizado a 60 FPS
                 lastTime = currentTime;
 
-                // Aplicar fuerza basada en el audio actual
-                if (isPlaying) {
-                    let audioForce = 0;
-                }
-
                 // Actualizar la simulación de la tela
                 cloth.update(deltaTime);
 
@@ -453,4 +442,5 @@
     </script>
 </body>
 </html>
+
 
