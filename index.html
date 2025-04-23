@@ -111,18 +111,26 @@
         class Cloth {
             constructor() {
                 this.points = [];
+                // Crear puntos de la tela
                 for (let y = 0; y <= numPointsY; y++) {
                     for (let x = 0; x <= numPointsX; x++) {
                         const u = x / numPointsX;
                         const v = y / numPointsY;
+
+                        // Posición inicial en forma de curva suave
                         const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
                         const py = canvas.height / 2 - clothHeight / 2 + clothHeight * v;
+
                         const point = new Point(px, py);
-                        point.pinned = y === 0;
+
+                        // Fijar solo los puntos superiores para que cuelgue
+                        if (y === 0) {
+                            point.pinned = true;
+                        }
+
                         this.points.push(point);
                     }
                 }
-
                 this.constraints = [];
                 for (let y = 0; y <= numPointsY; y++) {
                     for (let x = 0; x < numPointsX; x++) {
@@ -192,23 +200,7 @@
                     }
                 }
             }
-
-            applyWindForce(forceX, forceY) {
-                // Aplicar fuerzas de viento a todos los puntos
-                for (let i = 0; i < this.points.length; i++) {
-                    const point = this.points[i];
-                    if (!point.pinned) {
-                        // Añadir un pequeño componente aleatorio para simular turbulencia
-                        const randomX = (Math.random() - 0.5) * 0.1;
-                        const randomY = (Math.random() - 0.5) * 0.1;
-
-                        point.vx += forceX + randomX;
-                        point.vy += forceY + randomY;
-                    }
-                }
-            }
-
-            draw() {
+              draw() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#000";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -407,4 +399,5 @@
 </body>
 
 </html>
+
 
