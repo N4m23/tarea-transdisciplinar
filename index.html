@@ -67,13 +67,6 @@
         let autoSequence = ['incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
         let autoSequenceIndex = 0;
 
-        //Eventos
-        canvas.addEventListener('mousemove', handlePointerMove);
-        canvas.addEventListener('touchmove', handlePointerMove);
-        canvas.addEventListener('click', handleCanvasClick);
-        canvas.addEventListener('touchstart', handleTouchStart);
-        canvas.addEventListener('touchend', handleTouchEnd);
-        canvas.addEventListener('mouseup', handleTouchEnd);
 
         //Estado del audio
         let audios = [];
@@ -203,49 +196,52 @@
                     }
                 }
             }
-                draw() {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.fillStyle = "#000";
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+            draw() {
+                // Asegurarse de que el canvas esté limpio
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                    // Dibujar la tela con degradado suave
-                    for (let y = 0; y < numPointsY; y++) {
-                        for (let x = 0; x < numPointsX; x++) {
-                            const p1 = this.getPoint(x, y);
-                            const p2 = this.getPoint(x + 1, y);
-                            const p3 = this.getPoint(x + 1, y + 1);
-                            const p4 = this.getPoint(x, y + 1);
+                // Dibujar la tela con degradado suave
+                for (let y = 0; y < numPointsY; y++) {
+                    for (let x = 0; x < numPointsX; x++) {
+                        const p1 = this.getPoint(x, y);
+                        const p2 = this.getPoint(x + 1, y);
+                        const p3 = this.getPoint(x + 1, y + 1);
+                        const p4 = this.getPoint(x, y + 1);
 
-                            // Crear gradiente para simular sombras
-                            const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
-                            const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
+                        // Crear gradiente para simular sombras
+                        const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
+                        const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
 
-                            // Calcular normal aproximada para efectos de iluminación
-                            const nx = (p3.y - p1.y);
-                            const ny = -(p3.x - p1.x);
-                            const norm = Math.sqrt(nx * nx + ny * ny);
+                        // Calcular normal aproximada para efectos de iluminación
+                        const nx = (p3.y - p1.y);
+                        const ny = -(p3.x - p1.x);
+                        const norm = Math.sqrt(nx * nx + ny * ny) || 1; // Evitar división por cero
 
-                            // Normalizar normal
-                            const normalX = nx / norm;
-                            const normalY = ny / norm;
+                        // Normalizar normal
+                        const normalX = nx / norm;
+                        const normalY = ny / norm;
 
-                            // Calcular valor de iluminación basado en la normal
-                            const lightX = 0.5;
-                            const lightY = -1;
-                            const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
+                        // Calcular valor de iluminación basado en la normal
+                        const lightX = 0.5;
+                        const lightY = -1;
+                        const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
 
-                            // Color basado en iluminación
-                            const brightness = Math.floor(210 + lightIntensity * 45);
+                        // Color basado en iluminación (aseguramos valores válidos)
+                        const brightness = Math.max(0, Math.min(255, Math.floor(210 + lightIntensity * 45)));
 
-                            // Dibujar cuadrilátero
-                            ctx.beginPath();
-                            ctx.moveTo(p1.x, p1.y);
-                            ctx.lineTo(p2.x, p2.y);
-                            ctx.lineTo(p3.x, p3.y);
-                            ctx.lineTo(p4.x, p4.y);
-                            ctx.closePath();
+                        // Dibujar cuadrilátero
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.lineTo(p3.x, p3.y);
+                        ctx.lineTo(p4.x, p4.y);
+                        ctx.closePath();
 
-                            // Gradiente radial para simular pliegues y ondulaciones
+                        // Gradiente radial para simular pliegues y ondulaciones
+                        try {
                             const gradient = ctx.createRadialGradient(
                                 centerX, centerY, 0,
                                 centerX, centerY, restDistance * 2
@@ -256,17 +252,61 @@
 
                             ctx.fillStyle = gradient;
                             ctx.fill();
-
-                            // Líneas muy suaves para simular pliegues
-                            ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
-                            ctx.lineWidth = 0.5;
-                            ctx.stroke();
+                        } catch (e) {
+                            // Fallback si hay problemas con el gradiente
+                            ctx.fillStyle = `rgba(200, 200, 200, 0.8)`;
+                            ctx.fill();
                         }
+
+                        // Líneas muy suaves para simular pliegues
+                        ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
                     }
                 }
+            }
         }
 
         const cloth = new Cloth();
+
+          //Crear las  restricciones
+         Cloth.prototype.createConstraints = function() {
+            // Crear restricciones horizontales
+            for (let y = 0; y <= numPointsY; y++) {
+                for (let x = 0; x < numPointsX; x++) {
+                    this.constraints.push({
+                        p1: this.getPoint(x, y),
+                        p2: this.getPoint(x + 1, y),
+                        distance: restDistance
+                    });
+                }
+            }
+
+            // Crear restricciones verticales
+            for (let x = 0; x <= numPointsX; x++) {
+                for (let y = 0; y < numPointsY; y++) {
+                    this.constraints.push({
+                        p1: this.getPoint(x, y),
+                        p2: this.getPoint(x, y + 1),
+                        distance: restDistance
+                    });
+                }
+            }
+        }
+        cloth.createConstraints();
+
+
+        // Inicializa el audio
+        function initAudioContext() {
+            audioContext = new(window.AudioContext || window.webkitAudioContext)();
+            audios = audioFiles.map(file => {
+                const audio = new Audio(file);
+                audio.volume = 0.7;
+                return audio;
+            });
+           
+            playAudio("incertidumbre.mp3");
+        }
 
         //Touch
         function handleTouchStart() {
@@ -279,33 +319,29 @@
         function handleTouchEnd() {
             movementActive = false;
         }
-        // Inicializa el audio
-        function initAudioContext() {
-            audioContext = new(window.AudioContext || window.webkitAudioContext)();
-            audios = audioFiles.map(file => {
-                const audio = new Audio(file);
-                audio.volume = 0.7;
-                return audio
-            });
-
-            playAudio("incertidumbre.mp3");
-        }
         //Inactividad
         function startInactivityTimer() {
+             clearTimeout(inactivityTimeout);
             inactivityTimeout = setTimeout(() => {
                 playAudio('incertidumbre.mp3');
             }, inactivityTime);
         }
+        
         // Resetear el tiempo
         function resetInactivityTimer() {
             clearTimeout(inactivityTimeout);
             startInactivityTimer();
         }
+
         // Interacciones click
         function handleCanvasClick(e) {
+            if (!audioContext) {
+                initAudioContext();
+            }
             playAudio('atencion.mp3');
             resetInactivityTimer();
         }
+
         // Tocar los audios
         function playAudio(audioName) {
             resetInactivityTimer();
@@ -314,7 +350,7 @@
             }
             //Buscar audios
             let audioToPlay = audios.find(audio => audio.src.includes(audioName));
-            if (!audioToPlay) {
+             if (!audioToPlay) {
                 return;
             }
             //Evitar loops
@@ -325,10 +361,15 @@
             currentAudio = audioToPlay;
             audioToPlay.play();
         }
+
         // Touch
         function handlePointerMove(event) {
             event.preventDefault();
-            resetInactivityTimer()
+            resetInactivityTimer();
+
+             if (!audioContext) {
+                initAudioContext();
+            }
 
             let clientX, clientY;
             if (event.touches && event.touches.length > 0) {
@@ -377,6 +418,15 @@
             }
         }
 
+        // Agregar eventos
+        canvas.addEventListener('mousemove', handlePointerMove);
+        canvas.addEventListener('touchmove', handlePointerMove);
+        canvas.addEventListener('click', handleCanvasClick);
+        canvas.addEventListener('touchstart', handleTouchStart);
+        canvas.addEventListener('touchend', handleTouchEnd);
+        canvas.addEventListener('mouseup', handleTouchEnd);
+
+
         // Iniciar automatización
         startInactivityTimer();
 
@@ -389,27 +439,20 @@
         //Animación
         let lastTime = performance.now();
 
-         function animate() {
-                const currentTime = performance.now();
-                const deltaTime = (currentTime - lastTime) / 16; // Normalizado a 60 FPS
-                lastTime = currentTime;
+        function animate() {
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 16;
+            lastTime = currentTime;
+            
+            cloth.update(deltaTime);
+            cloth.draw();
+            
+            requestAnimationFrame(animate);
+        }
 
-                // Aplicar fuerza basada en el audio actual
-                if (isPlaying) {
-                    let audioForce = 0;
-                }
-
-                // Actualizar la simulación de la tela
-                cloth.update(deltaTime);
-
-                // Dibujar la tela
-                cloth.draw();
-
-                // Solicitar el próximo frame de animación
-                requestAnimationFrame(animate);
-            }
-
+        // Iniciar animación
         animate();
     </script>
 </body>
+
 </html>
