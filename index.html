@@ -314,6 +314,8 @@
                 if (!audioContext) {
                     initAudioContext();
                 }
+                 interactionActive = true; // Activar interacción al tocar la tela
+                handlePointerMove(event); // Iniciar la reproducción de audio
                 movementActive = true;
             }
         }
@@ -337,7 +339,7 @@
                 });
             })).then(loadedAudios => {
                 audios = loadedAudios;
-                playAudio('incertidumbre.mp3'); // Inicia la reproducción después de la carga
+                // No reproducir audio aquí, se inicia con el primer toque en la tela
             }).catch(error => console.error(error));
         }
 
@@ -371,41 +373,40 @@
         }
 
         // Tocar los audios
-        function playAudio(audioName) {
-            resetInactivityTimer();
-            if (!audioContext) {
-                initAudioContext();
-            }
-            // No reiniciar si ya está sonando el mismo audio y está activo
-            if (currentAudio && lastAudioName === audioName && !currentAudio.paused) {
-                return;
-            }
-            // Detener el audio anterior si es diferente
-            if (currentAudio && currentAudio !== audioName) {
-                currentAudio.pause();
-                currentAudio.currentTime = 0;
-            }
-            let audioToPlay = audios.find(audio => audio.src.includes(audioName));
-            if (!audioToPlay) return;
-            currentAudio = audioToPlay;
-            lastAudioName = audioName;
-            audioToPlay.currentTime = 0;
-            audioToPlay.play().catch(e => {});
-            // Si el usuario sigue interactuando, repetir el audio al terminar
-            audioToPlay.onended = function() {
-                if (interactionActive && lastAudioName === audioName) {
-                    audioToPlay.currentTime = 0;
-                    audioToPlay.play().catch(e => {});
+         function playAudio(audioName) {
+                resetInactivityTimer();
+                if (!audioContext) {
+                    initAudioContext();
                 }
-            };
-        }
+                // No reiniciar si ya está sonando el mismo audio y está activo
+                if (currentAudio && lastAudioName === audioName && !currentAudio.paused) {
+                    return;
+                }
+                // Detener el audio anterior si es diferente
+                if (currentAudio && currentAudio !== audioName) {
+                    currentAudio.pause();
+                    currentAudio.currentTime = 0;
+                }
+                let audioToPlay = audios.find(audio => audio.src.includes(audioName));
+                if (!audioToPlay) return;
+                currentAudio = audioToPlay;
+                lastAudioName = audioName;
+                audioToPlay.currentTime = 0;
+                audioToPlay.play().catch(e => {});
+                // Si el usuario sigue interactuando, repetir el audio al terminar
+                audioToPlay.onended = function() {
+                    if (interactionActive && lastAudioName === audioName) {
+                        audioToPlay.currentTime = 0;
+                        audioToPlay.play().catch(e => {});
+                    }
+                };
+            }
 
         // Touch
         function handlePointerMove(event) {
             event.preventDefault();
-            resetInactivityTimer();
+             resetInactivityTimer();
 
-            // Coordenadas del mouse/dedo
             let clientX, clientY;
             if (event.touches && event.touches.length > 0) {
                 clientX = event.touches[0].clientX;
@@ -414,64 +415,58 @@
                 clientX = event.clientX;
                 clientY = event.clientY;
             }
+          const rect = canvas.getBoundingClientRect();
+          const x = clientX - rect.left;
+          const y = clientY - rect.top;
 
-            // Verificar si el movimiento está dentro de la tela
-            const rect = canvas.getBoundingClientRect();
-            const x = clientX - rect.left;
-            const y = clientY - rect.top;
+           if (isInsideCloth(x, y)) {
+                 interactionActive = true;
 
-            if (isInsideCloth(x, y)) {
-                if (!audioContext) {
-                    initAudioContext();
-                }
-                interactionActive = true;
+             //Mover la tela
+            pointerSpeedX = clientX - pointerX;
+            pointerSpeedY = clientY - pointerY;
 
-                //Mover la tela
-                pointerSpeedX = clientX - pointerX;
-                pointerSpeedY = clientY - pointerY;
+            const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
+            totalMovement += distance;
+            const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
+            pointerX = clientX;
+            pointerY = clientY;
+            lastInteractionTime = performance.now();
+             let audioToPlay;
+              if (movementSpeed > 5) {
+                  audioToPlay = 'agitacion.mp3';
+               } else if (movementSpeed > 2) {
+                  audioToPlay = 'presencia.mp3';
+               } else {
+                  audioToPlay = 'suspension.mp3';
+               }
+               playAudio(audioToPlay);
+                     // Fuerza a la tela
+                 const pointerForceRadius = 150;
+                  const pointerForce = 0.5;
 
-                const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
-                totalMovement += distance;
-                const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
-                pointerX = clientX;
-                pointerY = clientY;
-                lastInteractionTime = performance.now();
-
-                let audioToPlay;
-                if (movementSpeed > 5) {
-                    audioToPlay = 'agitacion.mp3';
-                } else if (movementSpeed > 2) {
-                    audioToPlay = 'presencia.mp3';
-                } else {
-                    audioToPlay = 'suspension.mp3';
-                }
-                playAudio(audioToPlay);
-
-                // Fuerza a la tela
-                const pointerForceRadius = 150;
-                const pointerForce = 0.5;
-
-                for (let i = 0; i < cloth.points.length; i++) {
-                    const point = cloth.points[i];
-                    const dx = point.x - pointerX;
+                  for (let i = 0; i < cloth.points.length; i++) {
+                     const point = cloth.points[i];
+                     const dx = point.x - pointerX;
                     const dy = point.y - pointerY;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
+                   const dist = Math.sqrt(dx * dx + dy * dy);
 
                     if (dist < pointerForceRadius) {
-                        const force = (1 - dist / pointerForceRadius) * pointerForce;
-                        point.vx += (pointerSpeedX * force) / point.mass;
+                       const force = (1 - dist / pointerForceRadius) * pointerForce;
+                         point.vx += (pointerSpeedX * force) / point.mass;
                         point.vy += (pointerSpeedY * force) / point.mass;
-                    }
-                }
-            }
+                   }
+               }
+           } else {
+                interactionActive = false;
+              currentAudio.pause();
+           }
         }
-
         function isInsideCloth(x, y) {
             const clothLeft = canvas.width / 2 - clothWidth / 2;
             const clothTop = canvas.height / 2 - clothHeight / 2;
             return x >= clothLeft && x <= clothLeft + clothWidth && y >= clothTop && y <= clothTop + clothHeight;
         }
-
         canvas.addEventListener('mousemove', handlePointerMove);
         canvas.addEventListener('touchmove', handlePointerMove);
         canvas.addEventListener('click', handleCanvasClick);
@@ -509,5 +504,3 @@
 </body>
 
 </html>
-
-
