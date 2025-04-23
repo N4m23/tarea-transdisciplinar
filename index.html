@@ -50,32 +50,36 @@
             'desconexion.mp3'
         ];
 
+        let currentAudio = null;
+
         // Variables para la automatización
         let inactivityTimeout;
         const inactivityTime = 10000; // 10 segundos
-        let autoSequence = ['agitacion.mp3', 'incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
+        let autoSequence = ['incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
         let autoSequenceIndex = 0;
 
         //Listeners
         canvas.addEventListener('mousemove', handlePointerMove);
         canvas.addEventListener('touchmove', handlePointerMove);
         canvas.addEventListener('click', handleCanvasClick);
+        canvas.addEventListener('touchstart', () => {
+            if (!audioContext) {
+                initAudioContext();
+            }
+        });
 
         // Crear objetos de audio
         let audios = [];
 
         // Estado de reproducción
-        let currentAudioIndex = -1;
         let isPlaying = false;
         let sequenceStarted = false;
         let lastInteractionTime = 0;
-        let audioContext; // Declarar audioContext aquí
+        let audioContext;
 
         // Variables para la interacción del mouse/táctil
         let pointerX = canvas.width / 2;
         let pointerY = canvas.height / 2;
-        let prevPointerX = pointerX;
-        let prevPointerY = pointerY;
         let pointerSpeedX = 0;
         let pointerSpeedY = 0;
         let totalMovement = 0;
@@ -322,17 +326,14 @@
         // Función para inicializar el contexto de audio
         function initAudioContext() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            audios = audioFiles.map(file => {
-                const audio = new Audio(file);
-                audio.volume = 0.7;
-                return audio;
-            });
+            audios = audioFiles.map(file => new Audio(file));
         }
 
         // Para automatizar la reproducción
         function startInactivityTimer() {
             inactivityTimeout = setTimeout(() => {
-                playAudio('meditacion.mp3')
+                playAudio('incertidumbre.mp3'); // Reproduce incertidumbre.mp3 por inactividad
+                sequenceStarted = true; // Inicia la secuencia automática
             }, inactivityTime);
         }
 
@@ -344,13 +345,13 @@
 
         // Interacciones
         function handleCanvasClick(e) {
-            playAudio('entrecortada.mp3')
+            playAudio('atencion.mp3'); // Reproduce atencion.mp3 al hacer clic
             resetInactivityTimer();
         }
 
         // Función para reproducir audio con interrupciones
         function playAudio(audioName) {
-
+            resetInactivityTimer();
             //Verificar para el contexto
             if (!audioContext) {
                 initAudioContext();
@@ -359,14 +360,12 @@
             //Verificar que lleguen bien los audios
             let audioToPlay = audios.find(audio => audio.src.includes(audioName));
 
-            //Para todos los audios
-            for (let i = 0; i < audios.length; i++) {
-                if (audios[i]) {
-                    audios[i].pause();
-                    audios[i].currentTime = 0;
-                }
+            //Si esta sonando uno diferente
+            if (currentAudio && currentAudio !== audioToPlay) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
             }
-            //reproducir el audo
+            currentAudio = audioToPlay;
             audioToPlay.play();
             isPlaying = true;
 
@@ -376,33 +375,29 @@
         }
         // Función para manejar el movimiento del puntero (mouse o táctil)
         function handlePointerMove(event) {
-            resetInactivityTimer();
-            //Velocidad del puntero
+
+            //Mover la tela
             pointerSpeedX = event.clientX - pointerX;
             pointerSpeedY = event.clientY - pointerY;
 
-            //Distancia recorrida
             const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
             totalMovement += distance;
             const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY)
-
-            //Posición del puntero
             pointerX = event.clientX;
             pointerY = event.clientY;
 
-            //Tiempo de la interacción
             lastInteractionTime = performance.now();
 
-            //Asignar los audios
+            //Ajuste de audio
             if (movementSpeed > 5) {
-                playAudio('agitacion.mp3')
+                playAudio('agitacion.mp3');
             } else if (movementSpeed > 2) {
-                playAudio('agitacionleve.mp3')
+                playAudio('presencia.mp3');
             } else {
-                playAudio('atencion.mp3')
+                playAudio('suspension.mp3');
             }
 
-            //Aplicar fuerza del puntero a la tela
+            // Fuerza a la tela
             const pointerForceRadius = 150;
             const pointerForce = 0.5;
 
@@ -422,16 +417,15 @@
         // Iniciar automatización
         startInactivityTimer();
 
-        // Listener para redimensionar la ventana
+        //Redimensionar
         window.addEventListener('resize', function() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         });
 
-        // Variables para el bucle de animación
+        //Animación
         let lastTime = performance.now();
 
-        // Función de animación
         function animate() {
             const currentTime = performance.now();
             const deltaTime = (currentTime - lastTime) / 16;
@@ -441,11 +435,11 @@
             requestAnimationFrame(animate);
         }
 
-        // Iniciar la animación
         animate();
     </script>
 </body>
 
 </html>
+
 
 
