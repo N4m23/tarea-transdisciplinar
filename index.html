@@ -1,161 +1,486 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tela Sonora Interactiva</title>
     <style>
         body {
             margin: 0;
-            background: black;
+            padding: 0;
+            background-color: #000;
             overflow: hidden;
             touch-action: none;
         }
         canvas {
-            touch-action: none;
+            display: block;
+        }
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: #666;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0.7;
         }
     </style>
 </head>
 <body>
-    <canvas id="visualizer"></canvas>
-    <audio id="audioPlayer"></audio>
-    
+    <div id="info">Mueve el cursor/dedo para interactuar</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        const audioFiles = [
+        // Configuración principal
+        let scene, camera, renderer, cloth, analyser, dataArray;
+        let audioContext, audioSource, gainNode;
+        let currentTrack = 0;
+        let isPlaying = false;
+        let lastInteractionTime = 0;
+        let mouseSpeed = 0;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        let frameCount = 0;
+        
+        // Nombres de los archivos de audio en orden de reproducción
+        const audioTracks = [
+            'desconexion.mp3',
             'agitacion.mp3',
             'incertidumbre.mp3',
             'atencion.mp3',
             'presencia.mp3',
-            'suspension.mp3',
-            'desconexion.mp3'
+            'suspension.mp3'
         ];
-
-        const canvas = document.getElementById('visualizer');
-        const ctx = canvas.getContext('2d');
-        const audioPlayer = document.getElementById('audioPlayer');
-        let audioContext, analyser, source, gainNode;
-        let currentTrack = 5;
-        let isLooping = true;
-        let lastPosition = 0;
-        let lastTime = 0;
-        const VELOCITY_THRESHOLD = 0.8;
-        const fadeDuration = 1.5;
-
-        function initCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-
-        async function setupAudio() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-            gainNode = audioContext.createGain();
-            
-            audioPlayer.loop = true;
-            audioPlayer.src = audioFiles[5];
-            audioPlayer.play();
-        }
-
-        function transitionTrack(newTrack) {
-            gainNode.gain.setValueAtTime(1, audioContext.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + fadeDuration);
-            
-            setTimeout(() => {
-                audioPlayer.pause();
-                isLooping = false;
-                currentTrack = newTrack;
-                playNewTrack();
-            }, fadeDuration * 1000);
-        }
-
-        function playNewTrack() {
-            audioPlayer.loop = false;
-            audioPlayer.src = audioFiles[currentTrack];
-            audioPlayer.play();
-            
-            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-            gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + fadeDuration);
-            
-            audioPlayer.addEventListener('ended', () => {
-                if (currentTrack < 4) {
-                    currentTrack++;
-                    playNewTrack();
-                } else {
-                    currentTrack = 5;
-                    audioPlayer.loop = true;
-                    audioPlayer.src = audioFiles[5];
-                    audioPlayer.play();
-                    isLooping = true;
-                }
-            }, {once: true});
-        }
-
-        function drawVisualization() {
-            requestAnimationFrame(drawVisualization);
-            
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            analyser.getByteFrequencyData(dataArray);
-
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            ctx.strokeStyle = '#444';
-            ctx.lineWidth = 2;
-            for(let x = 0; x < canvas.width; x += 40) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, canvas.height);
-                ctx.stroke();
+        
+        // Estado de los audios para facilitar la gestión
+        const audioElements = [];
+        let isChangingTrack = false;
+        
+        // Configuración de la simulación de tela
+        const clothWidth = 40;
+        const clothHeight = 30;
+        const segmentSize = 0.5;
+        const stiffness = 0.9; // Rigidez de la tela (0 = muy elástica, 1 = rígida)
+        const damping = 0.05; // Amortiguación (controla cómo se calman las vibraciones)
+        
+        // Configuración de la interacción
+        const fastMoveThreshold = 100; // Umbral para considerar un movimiento "rápido"
+        const interactionCooldown = 1000; // Tiempo mínimo entre interacciones (ms)
+        
+        // Clase para simular la física de la tela
+        class ClothPoint {
+            constructor(x, y, z, fixed = false) {
+                this.position = new THREE.Vector3(x, y, z);
+                this.oldPosition = new THREE.Vector3(x, y, z);
+                this.acceleration = new THREE.Vector3(0, 0, 0);
+                this.fixed = fixed;
+                this.mass = 1;
             }
             
-            const waveIntensity = dataArray[30] / 255 * 60;
-            const baseHeight = canvas.height * 0.4;
-            
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.beginPath();
-            ctx.moveTo(0, baseHeight);
-            for(let i = 0; i < canvas.width; i++) {
-                const y = baseHeight + Math.sin(i * 0.1 + Date.now() * 0.005) * waveIntensity;
-                ctx.lineTo(i, y);
-            }
-            ctx.lineTo(canvas.width, canvas.height);
-            ctx.lineTo(0, canvas.height);
-            ctx.closePath();
-            ctx.fill();
-        }
-
-        function handleInput(e) {
-            const currentTime = Date.now();
-            const currentX = e.clientX || (e.touches[0] ? e.touches[0].clientX : 0);
-            
-            if (lastPosition !== 0) {
-                const velocity = Math.abs(currentX - lastPosition) / (currentTime - lastTime);
+            update(deltaTime) {
+                if (this.fixed) return;
                 
-                if (velocity > VELOCITY_THRESHOLD && isLooping) {
-                    transitionTrack(0);
-                } else if (isLooping) {
-                    transitionTrack(1);
-                }
+                const temp = new THREE.Vector3().copy(this.position);
+                
+                // Verlet integration
+                this.position.addScaledVector(this.position.clone().sub(this.oldPosition), stiffness);
+                this.position.addScaledVector(this.acceleration, deltaTime * deltaTime);
+                
+                this.oldPosition.copy(temp);
+                this.acceleration.set(0, 0, 0);
             }
             
-            lastPosition = currentX;
-            lastTime = currentTime;
+            applyForce(force) {
+                this.acceleration.add(force.divideScalar(this.mass));
+            }
         }
-
-        // Event listeners
-        canvas.addEventListener('touchstart', handleInput);
-        canvas.addEventListener('touchmove', handleInput);
-        canvas.addEventListener('touchend', () => lastPosition = 0);
-        canvas.addEventListener('mousedown', handleInput);
-        canvas.addEventListener('mousemove', (e) => { if(e.buttons === 1) handleInput(e) });
-        canvas.addEventListener('mouseup', () => lastPosition = 0);
-
-        window.addEventListener('load', async () => {
-            initCanvas();
-            await setupAudio();
-            drawVisualization();
-        });
-
-        window.addEventListener('resize', initCanvas);
+        
+        // Clase para gestionar la tela completa
+        class ClothSimulation {
+            constructor(width, height, segmentSize) {
+                this.width = width;
+                this.height = height;
+                this.segmentSize = segmentSize;
+                this.points = [];
+                this.constraints = [];
+                
+                // Crear malla de puntos
+                for (let y = 0; y <= height; y++) {
+                    for (let x = 0; x <= width; x++) {
+                        const xPos = (x - width/2) * segmentSize;
+                        const yPos = (y - height/2) * segmentSize * -1;
+                        const fixed = y === 0; // Fijar solo la fila superior
+                        
+                        this.points.push(new ClothPoint(xPos, yPos, 0, fixed));
+                    }
+                }
+                
+                // Crear restricciones estructurales (mantienen unida la tela)
+                const idx = (x, y) => x + y * (width + 1);
+                
+                // Restricciones horizontales
+                for (let y = 0; y <= height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        this.constraints.push([idx(x, y), idx(x+1, y), segmentSize]);
+                    }
+                }
+                
+                // Restricciones verticales
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x <= width; x++) {
+                        this.constraints.push([idx(x, y), idx(x, y+1), segmentSize]);
+                    }
+                }
+                
+                // Crear geometría y material
+                this.geometry = new THREE.PlaneGeometry(
+                    width * segmentSize,
+                    height * segmentSize,
+                    width,
+                    height
+                );
+                
+                this.material = new THREE.MeshPhongMaterial({
+                    color: 0xffffff,
+                    side: THREE.DoubleSide,
+                    specular: 0x222222,
+                    shininess: 30,
+                    flatShading: false
+                });
+                
+                this.mesh = new THREE.Mesh(this.geometry, this.material);
+                scene.add(this.mesh);
+            }
+            
+            update(deltaTime, audioData) {
+                // Aplicar fuerza basada en el audio
+                if (audioData && audioData.length > 0) {
+                    for (let i = 0; i < this.points.length; i++) {
+                        const point = this.points[i];
+                        
+                        // Usar diferentes frecuencias para diferentes áreas de la tela
+                        let audioIndex = Math.floor(i % audioData.length);
+                        let force = (audioData[audioIndex] / 128.0 - 1.0);
+                        
+                        // Calcular distancia desde el centro
+                        const x = i % (this.width + 1);
+                        const y = Math.floor(i / (this.width + 1));
+                        const centerX = this.width / 2;
+                        const centerY = this.height / 2;
+                        const distToCenter = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                        
+                        // Mayor efecto en el medio, menor en los bordes
+                        force *= Math.max(0, 1 - distToCenter / (this.width / 2)) * 2;
+                        
+                        // La fuerza se aplica en dirección Z (perpendicular a la tela)
+                        point.applyForce(new THREE.Vector3(0, 0, force * 3));
+                    }
+                }
+                
+                // Actualizar puntos
+                for (let i = 0; i < this.points.length; i++) {
+                    this.points[i].update(deltaTime);
+                }
+                
+                // Aplicar restricciones (para mantener la tela unida)
+                for (let i = 0; i < 3; i++) { // Varias iteraciones para mayor estabilidad
+                    this.satisfyConstraints();
+                }
+                
+                // Actualizar geometría
+                const positions = this.geometry.attributes.position.array;
+                
+                for (let i = 0; i < this.points.length; i++) {
+                    positions[i * 3] = this.points[i].position.x;
+                    positions[i * 3 + 1] = this.points[i].position.y;
+                    positions[i * 3 + 2] = this.points[i].position.z;
+                }
+                
+                this.geometry.attributes.position.needsUpdate = true;
+                this.geometry.computeVertexNormals(); // Recalcular normales para correcta iluminación
+            }
+            
+            satisfyConstraints() {
+                for (let i = 0; i < this.constraints.length; i++) {
+                    const [a, b, distance] = this.constraints[i];
+                    const pointA = this.points[a];
+                    const pointB = this.points[b];
+                    
+                    const diff = new THREE.Vector3().subVectors(pointB.position, pointA.position);
+                    const currentDist = diff.length();
+                    
+                    if (currentDist === 0) continue;
+                    
+                    const correctionFactor = (distance - currentDist) / currentDist * 0.5;
+                    const correction = diff.multiplyScalar(correctionFactor);
+                    
+                    if (!pointA.fixed) {
+                        pointA.position.sub(correction);
+                    }
+                    
+                    if (!pointB.fixed) {
+                        pointB.position.add(correction);
+                    }
+                }
+            }
+        }
+        
+        // Inicializar Three.js y configurar la escena
+        function init() {
+            // Crear escena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            
+            // Configurar cámara
+            const aspect = window.innerWidth / window.innerHeight;
+            camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 1000);
+            camera.position.set(0, -5, 25);
+            camera.lookAt(0, 0, 0);
+            
+            // Configurar renderizador
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+            
+            // Iluminación
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 10, 7);
+            scene.add(directionalLight);
+            
+            const backLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            backLight.position.set(-5, -10, -7);
+            scene.add(backLight);
+            
+            // Crear simulación de tela
+            cloth = new ClothSimulation(clothWidth, clothHeight, segmentSize);
+            
+            // Inicializar sistema de audio
+            initAudio();
+            
+            // Configurar manejadores de eventos
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('touchmove', onTouchMove);
+            
+            // Iniciar bucle de animación
+            animate();
+        }
+        
+        // Inicializar Web Audio API y cargar archivos de audio
+        function initAudio() {
+            try {
+                // Inicializar contexto de audio
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                gainNode = audioContext.createGain();
+                gainNode.gain.value = 0.5; // Volumen inicial al 50%
+                
+                // Crear analizador para procesar el audio
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                // Configurar la cadena de audio
+                gainNode.connect(analyser);
+                analyser.connect(audioContext.destination);
+                
+                // Cargar todos los archivos de audio
+                for (let i = 0; i < audioTracks.length; i++) {
+                    const audio = new Audio(audioTracks[i]);
+                    audio.preload = 'auto';
+                    audioElements.push(audio);
+                    
+                    audio.addEventListener('ended', () => {
+                        if (i === 0) {
+                            // Si es desconexión (modo reposo), volver a reproducir en bucle
+                            playTrack(0, true);
+                        } else if (i < audioTracks.length - 1) {
+                            // Si no es el último, reproducir el siguiente
+                            playTrack(i + 1);
+                        } else {
+                            // Si es el último, volver al modo reposo
+                            playTrack(0, true);
+                        }
+                    });
+                }
+                
+                // Comenzar con desconexion.mp3 en bucle
+                setTimeout(() => {
+                    playTrack(0, true);
+                }, 1000);
+                
+            } catch (e) {
+                console.error("Error al inicializar el audio:", e);
+            }
+        }
+        
+        // Función para reproducir una pista de audio específica
+        function playTrack(trackIndex, loop = false) {
+            if (isChangingTrack) return;
+            isChangingTrack = true;
+            
+            // Desconectar fuente actual si existe
+            if (audioSource) {
+                audioSource.disconnect();
+            }
+            
+            // Pausar todas las pistas
+            for (let i = 0; i < audioElements.length; i++) {
+                audioElements[i].pause();
+                audioElements[i].currentTime = 0;
+            }
+            
+            currentTrack = trackIndex;
+            const audio = audioElements[trackIndex];
+            audio.loop = loop;
+            
+            // Crear fade out/in para transición suave
+            if (gainNode.gain.value > 0) {
+                gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5);
+                
+                setTimeout(() => {
+                    connectAndPlayTrack(audio);
+                    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 0.5);
+                    isChangingTrack = false;
+                }, 500);
+            } else {
+                connectAndPlayTrack(audio);
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 0.5);
+                isChangingTrack = false;
+            }
+        }
+        
+        // Función auxiliar para conectar y reproducir una pista
+        function connectAndPlayTrack(audio) {
+            // Crear nueva fuente de audio
+            audioSource = audioContext.createMediaElementSource(audio);
+            audioSource.connect(gainNode);
+            
+            // Reproducir audio
+            let playPromise = audio.play();
+            if (playPromise) {
+                playPromise.catch(e => console.error("Error al reproducir audio:", e));
+            }
+            isPlaying = true;
+        }
+        
+        // Cambiar a la siguiente secuencia después de una interacción rápida
+        function startSequence(fastMovement = true) {
+            const now = Date.now();
+            if (now - lastInteractionTime < interactionCooldown) {
+                return; // Evitar disparar demasiado rápido
+            }
+            
+            lastInteractionTime = now;
+            
+            // Si movimiento rápido, comenzar con agitacion.mp3
+            // Si movimiento normal, comenzar con incertidumbre.mp3
+            if (fastMovement) {
+                playTrack(1); // agitacion.mp3
+            } else {
+                playTrack(2); // incertidumbre.mp3
+            }
+        }
+        
+        // Evento: redimensionar ventana
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // Evento: movimiento del ratón
+        function onMouseMove(event) {
+            // Si no se ha iniciado el contexto de audio, iniciarlo
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            // Calcular velocidad del cursor
+            const dx = event.clientX - lastMouseX;
+            const dy = event.clientY - lastMouseY;
+            const currentSpeed = Math.sqrt(dx * dx + dy * dy);
+            
+            // Actualizar velocidad promedio con suavizado
+            mouseSpeed = mouseSpeed * 0.8 + currentSpeed * 0.2;
+            
+            // Iniciar secuencia si el movimiento es rápido
+            if (mouseSpeed > fastMoveThreshold && currentTrack === 0) {
+                startSequence(true);
+            } else if (mouseSpeed > fastMoveThreshold / 2 && mouseSpeed <= fastMoveThreshold && currentTrack === 0) {
+                startSequence(false);
+            }
+            
+            // Guardar posición actual para el próximo cálculo
+            lastMouseX = event.clientX;
+            lastMouseY = event.clientY;
+        }
+        
+        // Evento: movimiento táctil
+        function onTouchMove(event) {
+            event.preventDefault();
+            
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            if (event.touches.length > 0) {
+                const touch = event.touches[0];
+                
+                // Calcular velocidad del dedo
+                const dx = touch.clientX - lastMouseX;
+                const dy = touch.clientY - lastMouseY;
+                const currentSpeed = Math.sqrt(dx * dx + dy * dy);
+                
+                // Actualizar velocidad promedio con suavizado
+                mouseSpeed = mouseSpeed * 0.8 + currentSpeed * 0.2;
+                
+                // Iniciar secuencia si el movimiento es rápido
+                if (mouseSpeed > fastMoveThreshold && currentTrack === 0) {
+                    startSequence(true);
+                } else if (mouseSpeed > fastMoveThreshold / 2 && mouseSpeed <= fastMoveThreshold && currentTrack === 0) {
+                    startSequence(false);
+                }
+                
+                // Guardar posición actual para el próximo cálculo
+                lastMouseX = touch.clientX;
+                lastMouseY = touch.clientY;
+            }
+        }
+        
+        // Función de animación principal
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Actualizar contador de frames
+            frameCount++;
+            
+            // Procesar datos de audio si está disponible
+            if (analyser && isPlaying) {
+                analyser.getByteFrequencyData(dataArray);
+            }
+            
+            // Actualizar simulación de tela
+            if (cloth) {
+                cloth.update(0.016, dataArray); // 0.016 = aproximadamente 60fps
+            }
+            
+            // Renderizar escena
+            renderer.render(scene, camera);
+            
+            // Reducir gradualmente la velocidad del ratón cuando no hay movimiento
+            mouseSpeed *= 0.95;
+        }
+        
+        // Iniciar la aplicación cuando se cargue la página
+        window.onload = init;
     </script>
 </body>
 </html>
