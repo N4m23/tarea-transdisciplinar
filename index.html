@@ -28,16 +28,33 @@
             transform: translate(-50%, -50%);
             touch-action: none;
         }
+
+        #start-button {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 10px 20px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 100;
+        }
     </style>
 </head>
 
 <body>
     <canvas id="canvas"></canvas>
+    <button id="start-button">Iniciar Experiencia</button>
 
     <script>
         // Configuración del canvas
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('start-button');
 
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -73,12 +90,14 @@
         // Automatización
         let inactivityTimeout;
         const inactivityTime = 10000; // 10 segundos
+        let autoSequence = ['incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
+        let autoSequenceIndex = 0;
 
         //Estado del audio
-        let audios = [];
+        let audios = {};
         let isPlaying = false;
         let lastInteractionTime = 0;
-        let audioContext;
+        let audioContext = null;
 
         //Touch
         let pointerX = canvas.width / 2;
@@ -135,27 +154,7 @@
                 }
 
                 this.constraints = [];
-                // Crear restricciones horizontales
-                for (let y = 0; y <= numPointsY; y++) {
-                    for (let x = 0; x < numPointsX; x++) {
-                        this.constraints.push({
-                            p1: this.getPoint(x, y),
-                            p2: this.getPoint(x + 1, y),
-                            distance: restDistance
-                        });
-                    }
-                }
-
-                // Crear restricciones verticales
-                for (let x = 0; x <= numPointsX; x++) {
-                    for (let y = 0; y < numPointsY; y++) {
-                        this.constraints.push({
-                            p1: this.getPoint(x, y),
-                            p2: this.getPoint(x, y + 1),
-                            distance: restDistance
-                        });
-                    }
-                }
+                this.createConstraints();
             }
             getPoint(x, y) {
                 return this.points[y * (numPointsX + 1) + x];
@@ -309,48 +308,52 @@
         }
 
         const cloth = new Cloth();
-        cloth.createConstraints(); // Llamar a crear restricciones después de inicializar
 
-        //Touch
-        function handleTouchStart(event) {
-            // Verificar si el toque está dentro de los límites de la tela
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
+        // Inicializar la experiencia
+        startButton.addEventListener('click', function() {
+            startButton.style.display = 'none';
+            initAudioContext();
+            initExperience();
+            animate();
+        });
 
-            if (isInsideCloth(x, y)) {
-                if (!audioContext) {
-                    initAudioContext();
-                }
-                interactionActive = true; // Activar interacción al tocar la tela
-                handlePointerMove(event); // Simular un movimiento para disparar el audio inicial
-                movementActive = true;
-
-            }
+        function initExperience() {
+            // Iniciar con el audio presencia
+            setTimeout(() => {
+                playAudio('presencia.mp3');
+            }, 500);
+            
+            // Configurar los event listeners después de que se ha iniciado
+            canvas.addEventListener('mousemove', handlePointerMove);
+            canvas.addEventListener('touchmove', handlePointerMove, { passive: false });
+            canvas.addEventListener('click', handleCanvasClick);
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+            canvas.addEventListener('touchend', handleTouchEnd);
+            canvas.addEventListener('mouseup', handleTouchEnd);
+            canvas.addEventListener('mouseleave', handleTouchEnd);
+            
+            // Iniciar el temporizador de inactividad
+            startInactivityTimer();
         }
 
-        function handleTouchEnd() {
-            movementActive = false;
-            interactionActive = false;
-            lastMovementTime = 0;
-        }
-
-        // Inicializa el audio
+        // Inicializa el audio - CORREGIDO
         function initAudioContext() {
-            audioContext = new(window.AudioContext || window.webkitAudioContext)();
-            // Carga asíncrona de audios
-            Promise.all(audioFiles.map(file => {
-                return new Promise((resolve, reject) => {
-                    const audio = new Audio(file);
-                    audio.volume = 0.7;
-                    audio.addEventListener('canplaythrough', () => resolve(audio));
-                    audio.addEventListener('error', () => reject(`Error loading audio: ${file}`));
-                    audio.src = file;
-                    resolve(audio);
-                });
-            })).then(loadedAudios => {
-                audios = loadedAudios;
-            }).catch(error => console.error("Error al cargar audios"));
+            // La política de autoplay requiere una interacción del usuario
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Crear elementos de audio para cada archivo
+            audioFiles.forEach(file => {
+                const audio = new Audio();
+                audio.volume = 0.7;
+                audio.preload = 'auto';
+                audio.src = file;
+                audios[file] = audio;
+                
+                // Asegurarse de que se pueda reproducir
+                audio.load();
+            });
+            
+            console.log("Audio context initialized:", audioContext.state);
         }
 
         //Inactividad
@@ -367,6 +370,31 @@
             startInactivityTimer();
         }
 
+        //Touch
+        function handleTouchStart(event) {
+            event.preventDefault();
+            // Verificar si el toque está dentro de los límites de la tela
+            const rect = canvas.getBoundingClientRect();
+            const x = event.touches[0].clientX - rect.left;
+            const y = event.touches[0].clientY - rect.top;
+
+            if (isInsideCloth(x, y)) {
+                interactionActive = true; // Activar interacción al tocar la tela
+                lastPointerX = event.touches[0].clientX;
+                lastPointerY = event.touches[0].clientY;
+                movementActive = true;
+                
+                // Reproducir audio de presencia al inicio de la interacción
+                playAudio('presencia.mp3');
+            }
+        }
+
+        function handleTouchEnd(event) {
+            event.preventDefault();
+            movementActive = false;
+            interactionActive = false;
+        }
+
         // Interacciones click
         function handleCanvasClick(event) {
             const rect = canvas.getBoundingClientRect();
@@ -374,89 +402,110 @@
             const y = event.clientY - rect.top;
 
             if (isInsideCloth(x, y)) {
-                if (!audioContext) {
-                    initAudioContext();
-                }
-
                 const currentTime = performance.now();
                 const timeSinceLastClick = currentTime - lastClickTime;
                 lastClickTime = currentTime;
-
+                
                 // Determinar si es un clic rápido o lento
                 if (timeSinceLastClick < 500) { // Menos de 500ms entre clics se considera rápido
-                    playAudio('atencion.mp3'); // Clic rápido
+                    playAudio('atencion.mp3');
                 } else {
-                    playAudio('presencia.mp3'); // Clic lento
+                    playAudio('presencia.mp3');
                 }
-
+                
                 resetInactivityTimer();
             }
         }
 
-        // Tocar los audios
+        // Tocar los audios - CORREGIDO
         function playAudio(audioName) {
-            if (!interactionActive) return; // No reproducir si no hay interacción activa
-
+            console.log("Intentando reproducir:", audioName);
             resetInactivityTimer();
-            if (!audioContext) {
-                initAudioContext();
-            }
-
+            
             // No reiniciar si ya está sonando el mismo audio y está activo
             if (currentAudio && lastAudioName === audioName && !currentAudio.paused) {
                 return;
             }
-
-            // Detener el audio anterior si es diferente
-            if (currentAudio && lastAudioName !== audioName) {
+            
+            // Detener el audio anterior si existe
+            if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
             }
-
-            let audioToPlay = audios.find(audio => audio.src.includes(audioName));
+            
+            const audioToPlay = audios[audioName];
             if (!audioToPlay) {
-                console.warn(`Archivo de audio no encontrado: ${audioName}`);
+                console.error("Audio no encontrado:", audioName);
                 return;
             }
-            currentAudio = audioToPlay;
-            lastAudioName = audioName;
+            
+            // Asegurar que el audio comienza desde el principio
             audioToPlay.currentTime = 0;
-            audioToPlay.play().catch(e => {
-                console.error(`Error al reproducir ${audioName}:`, e);
-            });
-
+            
+            // Reproducir con promise para capturar posibles errores
+            const playPromise = audioToPlay.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    console.log("Audio reproducido con éxito:", audioName);
+                    currentAudio = audioToPlay;
+                    lastAudioName = audioName;
+                }).catch(error => {
+                    console.error("Error reproduciendo audio:", error);
+                    // Intentar reproducir de nuevo en caso de error
+                    setTimeout(() => {
+                        audioToPlay.play().catch(e => console.error("Reintento fallido:", e));
+                    }, 100);
+                });
+            }
+            
             // Si el usuario sigue interactuando, repetir el audio al terminar
             audioToPlay.onended = function() {
                 if (interactionActive && lastAudioName === audioName) {
                     audioToPlay.currentTime = 0;
-                    audioToPlay.play().catch(e => {
-                        console.error(`Error al repetir ${audioName}:`, e);
-                    });
+                    audioToPlay.play().catch(e => console.error("Error en repetición:", e));
                 }
             };
         }
-        function isMovementConstant() {
-                const now = Date.now();
-                const timeThreshold = 100; // Tiempo en milisegundos para considerar el movimiento constante
-                const speedThreshold = 2; // Velocidad mínima para considerar el movimiento constante
 
-                // Si el puntero está prácticamente en el mismo lugar
-                if (Math.abs(pointerX - lastPointerX) < 1 && Math.abs(pointerY - lastPointerY) < 1) {
-                    return true;
-                }
-
-                // Si el tiempo entre el movimiento actual y el anterior es menor que el umbral
-                if (now - lastMovementTime < timeThreshold) {
-                    return true;
-                }
-                return false
+        // Función para analizar el patrón de movimiento
+        function analyzeMovement(speed) {
+            // Añadir el tiempo actual y la velocidad al historial
+            const now = performance.now();
+            movementTimestamps.push({time: now, speed: speed});
+            
+            // Mantener solo los últimos 2 segundos de movimientos
+            while (movementTimestamps.length > 0 && now - movementTimestamps[0].time > 2000) {
+                movementTimestamps.shift();
             }
-            // Touch
+            
+            // Calcular si el movimiento es constante
+            if (movementTimestamps.length >= 5) {
+                let isConstant = true;
+                const avgSpeed = movementTimestamps.reduce((sum, item) => sum + item.speed, 0) / movementTimestamps.length;
+                
+                // Determinar si es un movimiento constante basado en la consistencia de la velocidad
+                for (let i = 0; i < movementTimestamps.length; i++) {
+                    const speedDiff = Math.abs(movementTimestamps[i].speed - avgSpeed);
+                    if (speedDiff > avgSpeed * 0.5) { // Permitir 50% de variación
+                        isConstant = false;
+                        break;
+                    }
+                }
+                
+                return {
+                    isConstant: isConstant,
+                    avgSpeed: avgSpeed
+                };
+            }
+            
+            return {isConstant: false, avgSpeed: speed};
+        }
+
+        // Touch
         function handlePointerMove(event) {
             event.preventDefault();
             resetInactivityTimer();
 
-            // Coordenadas del mouse/dedo
             let clientX, clientY;
             if (event.touches && event.touches.length > 0) {
                 clientX = event.touches[0].clientX;
@@ -465,50 +514,47 @@
                 clientX = event.clientX;
                 clientY = event.clientY;
             }
-
-            // Verificar si el movimiento está dentro de la tela
             const rect = canvas.getBoundingClientRect();
-            const x = clientX - rect.left;
-            const y = clientY - rect.top;
-
-            let audioToPlay = null;
+            const x = (clientX - rect.left);
+            const y = (clientY - rect.top);
 
             if (isInsideCloth(x, y)) {
-                if (!audioContext) {
-                    initAudioContext();
-                }
                 interactionActive = true;
 
-                //Mover la tela
-                pointerSpeedX = clientX - pointerX;
-                pointerSpeedY = clientY - pointerY;
-
-                const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
-                totalMovement += distance;
+                // Calcular velocidad de movimiento
+                pointerSpeedX = clientX - lastPointerX;
+                pointerSpeedY = clientY - lastPointerY;
+                
                 const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
-                pointerX = clientX;
-                pointerY = clientY;
-                lastInteractionTime = performance.now();
-
-                //Asignación de audio según el movimiento
-                if (movementSpeed > 5) {
-                    audioToPlay = 'agitacion.mp3'; // Movimiento rápido
+                const movementAnalysis = analyzeMovement(movementSpeed);
+                
+                // Actualizar posición para el siguiente frame
+                lastPointerX = clientX;
+                lastPointerY = clientY;
+                
+                // Decidir qué audio reproducir basado en el patrón de movimiento
+                let audioToPlay;
+                
+                if (movementAnalysis.isConstant && movementAnalysis.avgSpeed > 1) {
+                    audioToPlay = 'incertidumbre.mp3';
+                } else if (movementSpeed > 8) {
+                    audioToPlay = 'agitacion.mp3';
+                } else if (movementSpeed > 2) {
+                    audioToPlay = 'suspension.mp3';
+                } else {
+                    audioToPlay = 'suspension.mp3';
                 }
-                 else if (isMovementConstant()) {
-                     audioToPlay = 'incertidumbre.mp3'; // Movimiento constante
-                   }
-                else {
-                    audioToPlay = 'suspension.mp3'; // Movimiento lento
-                }
-
+                
+                playAudio(audioToPlay);
+                
                 // Fuerza a la tela
                 const pointerForceRadius = 150;
                 const pointerForce = 0.5;
 
                 for (let i = 0; i < cloth.points.length; i++) {
                     const point = cloth.points[i];
-                    const dx = point.x - pointerX;
-                    const dy = point.y - pointerY;
+                    const dx = point.x - clientX;
+                    const dy = point.y - clientY;
                     const dist = Math.sqrt(dx * dx + dy * dy);
 
                     if (dist < pointerForceRadius) {
@@ -518,33 +564,18 @@
                     }
                 }
             } else {
-                interactionActive = false; // Si el puntero sale de la tela, desactivar la interacción
+                interactionActive = false;
+                if (currentAudio) {
+                    currentAudio.pause();
+                }
             }
-
-            if (audioToPlay && lastAudioName !== audioToPlay && interactionActive) {
-                playAudio(audioToPlay);
-            }
-              lastMovementTime = performance.now();
-            lastPointerX = pointerX;
-            lastPointerY = pointerY;
         }
-
+        
         function isInsideCloth(x, y) {
             const clothLeft = canvas.width / 2 - clothWidth / 2;
             const clothTop = canvas.height / 2 - clothHeight / 2;
             return x >= clothLeft && x <= clothLeft + clothWidth && y >= clothTop && y <= clothTop + clothHeight;
         }
-
-        canvas.addEventListener('mousemove', handlePointerMove);
-        canvas.addEventListener('touchmove', handlePointerMove);
-        canvas.addEventListener('click', handleCanvasClick);
-        canvas.addEventListener('touchstart', handleTouchStart);
-        canvas.addEventListener('touchend', handleTouchEnd);
-        canvas.addEventListener('mouseup', handleTouchEnd);
-        canvas.addEventListener('mouseleave', handleTouchEnd);
-
-        // Iniciar automatización
-        startInactivityTimer();
 
         //Redimensionar
         window.addEventListener('resize', function() {
@@ -566,8 +597,8 @@
             requestAnimationFrame(animate);
         }
 
-        // Iniciar animación
-        animate();
+        // Iniciar solo la animación, el audio se iniciará con el botón
+        cloth.draw();
     </script>
 </body>
 
