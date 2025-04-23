@@ -17,6 +17,7 @@
             height: 100vh;
             color: #fff;
             font-family: Arial, sans-serif;
+            cursor: pointer;
         }
 
         canvas {
@@ -48,6 +49,17 @@
             'suspension.mp3',
             'desconexion.mp3'
         ];
+
+        // Variables para la automatización
+        let inactivityTimeout;
+        const inactivityTime = 10000; // 10 segundos
+        let autoSequence = ['agitacion.mp3', 'incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
+        let autoSequenceIndex = 0;
+
+        //Listeners
+        canvas.addEventListener('mousemove', handlePointerMove);
+        canvas.addEventListener('touchmove', handlePointerMove);
+        canvas.addEventListener('click', handleCanvasClick);
 
         // Crear objetos de audio
         let audios = [];
@@ -307,35 +319,45 @@
         // Crear tela
         const cloth = new Cloth();
 
-        // Función para reproducir audio según la secuencia
-        function playNextAudio(movementSpeed) {
-            // Si ya hay un audio reproduciéndose, no hacer nada
-            if (isPlaying) return;
+        // Función para inicializar el contexto de audio
+        function initAudioContext() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            audios = audioFiles.map(file => {
+                const audio = new Audio(file);
+                audio.volume = 0.7;
+                return audio;
+            });
+        }
 
-            //Ajuste de sensibilidad
-            const fastMovementThreshold = 5
+        // Para automatizar la reproducción
+        function startInactivityTimer() {
+            inactivityTimeout = setTimeout(() => {
+                playAudio('meditacion.mp3')
+            }, inactivityTime);
+        }
 
-            //Definir la secuencia
-            if (!sequenceStarted) {
-                currentAudioIndex = Math.random() < 0.5 ? 0 : 4;
-                sequenceStarted = true;
-            } else {
-                if (movementSpeed > fastMovementThreshold) {
-                    currentAudioIndex = 0
-                } else if (currentAudioIndex === 0) {
-                    currentAudioIndex = 1;
-                } else if (currentAudioIndex === 1) {
-                    currentAudioIndex = 2;
-                } else if (currentAudioIndex === 2) {
-                    currentAudioIndex = 3;
-                } else if (currentAudioIndex === 3) {
-                    currentAudioIndex = 4;
-                } else if (currentAudioIndex === 4) {
-                    currentAudioIndex = 5;
-                } else if (currentAudioIndex === 5) {
-                    currentAudioIndex = 0;
-                }
+        // Para reiniciar el contador
+        function resetInactivityTimer() {
+            clearTimeout(inactivityTimeout);
+            startInactivityTimer();
+        }
+
+        // Interacciones
+        function handleCanvasClick(e) {
+            playAudio('entrecortada.mp3')
+            resetInactivityTimer();
+        }
+
+        // Función para reproducir audio con interrupciones
+        function playAudio(audioName) {
+
+            //Verificar para el contexto
+            if (!audioContext) {
+                initAudioContext();
             }
+
+            //Verificar que lleguen bien los audios
+            let audioToPlay = audios.find(audio => audio.src.includes(audioName));
 
             //Para todos los audios
             for (let i = 0; i < audios.length; i++) {
@@ -344,44 +366,43 @@
                     audios[i].currentTime = 0;
                 }
             }
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                audios = audioFiles.map(file => {
-                    const audio = new Audio(file);
-                    audio.volume = 0.7;
-                    return audio;
-                });
-            }
             //reproducir el audo
-            const audio = audios[currentAudioIndex];
-            audio.play();
+            audioToPlay.play();
             isPlaying = true;
 
-            audio.onended = function() {
+            audioToPlay.onended = function() {
                 isPlaying = false;
-                setTimeout(playNextAudio, 1000);
             };
         }
-
         // Función para manejar el movimiento del puntero (mouse o táctil)
-        function handlePointerMove(x, y) {
-            pointerSpeedX = x - pointerX;
-            pointerSpeedY = y - pointerY;
+        function handlePointerMove(event) {
+            resetInactivityTimer();
+            //Velocidad del puntero
+            pointerSpeedX = event.clientX - pointerX;
+            pointerSpeedY = event.clientY - pointerY;
 
+            //Distancia recorrida
             const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
             totalMovement += distance;
-
             const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY)
-            pointerX = x;
-            pointerY = y;
 
+            //Posición del puntero
+            pointerX = event.clientX;
+            pointerY = event.clientY;
+
+            //Tiempo de la interacción
             lastInteractionTime = performance.now();
 
-            if (totalMovement > 100 && !isPlaying) {
-                playNextAudio(movementSpeed);
-                totalMovement = 0;
+            //Asignar los audios
+            if (movementSpeed > 5) {
+                playAudio('agitacion.mp3')
+            } else if (movementSpeed > 2) {
+                playAudio('agitacionleve.mp3')
+            } else {
+                playAudio('atencion.mp3')
             }
 
+            //Aplicar fuerza del puntero a la tela
             const pointerForceRadius = 150;
             const pointerForce = 0.5;
 
@@ -398,18 +419,8 @@
                 }
             }
         }
-
-        // Listener para el movimiento del mouse
-        window.addEventListener('mousemove', function(event) {
-            handlePointerMove(event.clientX, event.clientY);
-        });
-
-        // Listener para eventos táctiles
-        window.addEventListener('touchmove', function(event) {
-            event.preventDefault();
-            const touch = event.touches[0];
-            handlePointerMove(touch.clientX, touch.clientY);
-        });
+        // Iniciar automatización
+        startInactivityTimer();
 
         // Listener para redimensionar la ventana
         window.addEventListener('resize', function() {
@@ -436,4 +447,5 @@
 </body>
 
 </html>
+
 
