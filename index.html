@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CompresiÃ³n y ExpansiÃ³n</title>
+    <title>Compresión y Expansión</title>
     <style>
         body {
             margin: 0;
@@ -51,7 +51,7 @@
     <button id="start-button">Iniciar Experiencia</button>
 
     <script>
-        // ConfiguraciÃ³n del canvas
+        // Configuración del canvas
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const startButton = document.getElementById('start-button');
@@ -59,13 +59,13 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // Desactivar el menÃº contextual en dispositivos tÃ¡ctiles
+        // Desactivar el menú contextual en dispositivos táctiles
         canvas.addEventListener('contextmenu', function(e) {
             e.preventDefault();
         });
         canvas.style.touchAction = 'none';
 
-        // ConfiguraciÃ³n de archivos de audio
+        // Configuración de archivos de audio
         const audioFiles = [
             'agitacion.mp3',
             'incertidumbre.mp3',
@@ -87,7 +87,7 @@
         let clickTimer = null;
         let lastClickTime = 0;
 
-        // AutomatizaciÃ³n
+        // Automatización
         let inactivityTimeout;
         const inactivityTime = 10000; // 10 segundos
         let autoSequence = ['incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
@@ -138,7 +138,7 @@
                         const u = x / numPointsX;
                         const v = y / numPointsY;
 
-                        // PosiciÃ³n inicial en forma de curva suave
+                        // Posición inicial en forma de curva suave
                         const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
                         const py = canvas.height / 2 - clothHeight / 2 + clothHeight * v;
 
@@ -212,10 +212,10 @@
                         const currentDistance = Math.sqrt(dx * dx + dy * dy);
 
                         if (currentDistance > 0) {
-                            // Calcular direcciÃ³n
+                            // Calcular dirección
                             const diff = (constraint.distance - currentDistance) / currentDistance;
 
-                            // Distribuir correcciÃ³n
+                            // Distribuir corrección
                             const percent1 = p1.pinned ? 0 : 0.5;
                             const percent2 = p2.pinned ? 0 : 0.5;
 
@@ -233,7 +233,7 @@
             }
 
             draw() {
-                // Asegurarse de que el canvas estÃ© limpio
+                // Asegurarse de que el canvas esté limpio
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#000";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -255,24 +255,24 @@
                         const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
                         const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
 
-                        // Calcular normal aproximada para efectos de iluminaciÃ³n
+                        // Calcular normal aproximada para efectos de iluminación
                         const nx = (p3.y - p1.y);
                         const ny = -(p3.x - p1.x);
-                        const norm = Math.sqrt(nx * nx + ny * ny) || 1; // Evitar divisiÃ³n por cero
+                        const norm = Math.sqrt(nx * nx + ny * ny) || 1; // Evitar división por cero
 
                         // Normalizar normal
                         const normalX = nx / norm;
                         const normalY = ny / norm;
 
-                        // Calcular valor de iluminaciÃ³n basado en la normal
+                        // Calcular valor de iluminación basado en la normal
                         const lightX = 0.5;
                         const lightY = -1;
                         const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
 
-                        // Color basado en iluminaciÃ³n (aseguramos valores vÃ¡lidos)
+                        // Color basado en iluminación (aseguramos valores válidos)
                         const brightness = Math.max(0, Math.min(255, Math.floor(210 + lightIntensity * 45)));
 
-                        // Dibujar cuadrilÃ¡tero
+                        // Dibujar cuadrilátero
                         ctx.beginPath();
                         ctx.moveTo(p1.x, p1.y);
                         ctx.lineTo(p2.x, p2.y);
@@ -298,7 +298,7 @@
                             ctx.fill();
                         }
 
-                        // LÃ­neas muy suaves para simular pliegues
+                        // Líneas muy suaves para simular pliegues
                         ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
                         ctx.lineWidth = 0.5;
                         ctx.stroke();
@@ -323,7 +323,7 @@
                 playAudio('presencia.mp3');
             }, 500);
             
-            // Configurar los event listeners despuÃ©s de que se ha iniciado
+            // Configurar los event listeners después de que se ha iniciado
             canvas.addEventListener('mousemove', handlePointerMove);
             canvas.addEventListener('touchmove', handlePointerMove, { passive: false });
             canvas.addEventListener('click', handleCanvasClick);
@@ -338,7 +338,7 @@
 
         // Inicializa el audio - CORREGIDO
         function initAudioContext() {
-            // La polÃ­tica de autoplay requiere una interacciÃ³n del usuario
+            // La política de autoplay requiere una interacción del usuario
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             
             // Crear elementos de audio para cada archivo
@@ -373,18 +373,18 @@
         //Touch
         function handleTouchStart(event) {
             event.preventDefault();
-            // Verificar si el toque estÃ¡ dentro de los lÃ­mites de la tela
+            // Verificar si el toque está dentro de los límites de la tela
             const rect = canvas.getBoundingClientRect();
             const x = event.touches[0].clientX - rect.left;
             const y = event.touches[0].clientY - rect.top;
 
             if (isInsideCloth(x, y)) {
-                interactionActive = true; // Activar interacciÃ³n al tocar la tela
+                interactionActive = true; // Activar interacción al tocar la tela
                 lastPointerX = event.touches[0].clientX;
                 lastPointerY = event.touches[0].clientY;
                 movementActive = true;
                 
-                // Reproducir audio de presencia al inicio de la interacciÃ³n
+                // Reproducir audio de presencia al inicio de la interacción
                 playAudio('presencia.mp3');
             }
         }
@@ -406,8 +406,8 @@
                 const timeSinceLastClick = currentTime - lastClickTime;
                 lastClickTime = currentTime;
                 
-                // Determinar si es un clic rÃ¡pido o lento
-                if (timeSinceLastClick < 500) { // Menos de 500ms entre clics se considera rÃ¡pido
+                // Determinar si es un clic rápido o lento
+                if (timeSinceLastClick < 500) { // Menos de 500ms entre clics se considera rápido
                     playAudio('atencion.mp3');
                 } else {
                     playAudio('presencia.mp3');
@@ -422,7 +422,7 @@
             console.log("Intentando reproducir:", audioName);
             resetInactivityTimer();
             
-            // No reiniciar si ya estÃ¡ sonando el mismo audio y estÃ¡ activo
+            // No reiniciar si ya está sonando el mismo audio y está activo
             if (currentAudio && lastAudioName === audioName && !currentAudio.paused) {
                 return;
             }
@@ -446,7 +446,7 @@
             const playPromise = audioToPlay.play();
             if (playPromise !== undefined) {
                 playPromise.then(() => {
-                    console.log("Audio reproducido con Ã©xito:", audioName);
+                    console.log("Audio reproducido con éxito:", audioName);
                     currentAudio = audioToPlay;
                     lastAudioName = audioName;
                 }).catch(error => {
@@ -462,18 +462,18 @@
             audioToPlay.onended = function() {
                 if (interactionActive && lastAudioName === audioName) {
                     audioToPlay.currentTime = 0;
-                    audioToPlay.play().catch(e => console.error("Error en repeticiÃ³n:", e));
+                    audioToPlay.play().catch(e => console.error("Error en repetición:", e));
                 }
             };
         }
 
-        // FunciÃ³n para analizar el patrÃ³n de movimiento
+        // Función para analizar el patrón de movimiento
         function analyzeMovement(speed) {
-            // AÃ±adir el tiempo actual y la velocidad al historial
+            // Añadir el tiempo actual y la velocidad al historial
             const now = performance.now();
             movementTimestamps.push({time: now, speed: speed});
             
-            // Mantener solo los Ãºltimos 2 segundos de movimientos
+            // Mantener solo los últimos 2 segundos de movimientos
             while (movementTimestamps.length > 0 && now - movementTimestamps[0].time > 2000) {
                 movementTimestamps.shift();
             }
@@ -486,7 +486,7 @@
                 // Determinar si es un movimiento constante basado en la consistencia de la velocidad
                 for (let i = 0; i < movementTimestamps.length; i++) {
                     const speedDiff = Math.abs(movementTimestamps[i].speed - avgSpeed);
-                    if (speedDiff > avgSpeed * 0.5) { // Permitir 50% de variaciÃ³n
+                    if (speedDiff > avgSpeed * 0.5) { // Permitir 50% de variación
                         isConstant = false;
                         break;
                     }
@@ -528,11 +528,11 @@
                 const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
                 const movementAnalysis = analyzeMovement(movementSpeed);
                 
-                // Actualizar posiciÃ³n para el siguiente frame
+                // Actualizar posición para el siguiente frame
                 lastPointerX = clientX;
                 lastPointerY = clientY;
                 
-                // Decidir quÃ© audio reproducir basado en el patrÃ³n de movimiento
+                // Decidir qué audio reproducir basado en el patrón de movimiento
                 let audioToPlay;
                 
                 if (movementAnalysis.isConstant && movementAnalysis.avgSpeed > 1) {
@@ -583,7 +583,7 @@
             canvas.height = window.innerHeight;
         });
 
-        //AnimaciÃ³n
+        //Animación
         let lastTime = performance.now();
 
         function animate() {
@@ -597,7 +597,7 @@
             requestAnimationFrame(animate);
         }
 
-        // Iniciar solo la animaciÃ³n, el audio se iniciarÃ¡ con el botÃ³n
+        // Iniciar solo la animación, el audio se iniciará con el botón
         cloth.draw();
     </script>
 </body>
