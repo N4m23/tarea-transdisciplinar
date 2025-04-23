@@ -67,6 +67,13 @@
         let autoSequence = ['incertidumbre.mp3', 'atencion.mp3', 'presencia.mp3', 'suspension.mp3', 'desconexion.mp3'];
         let autoSequenceIndex = 0;
 
+        //Eventos
+        canvas.addEventListener('mousemove', handlePointerMove);
+        canvas.addEventListener('touchmove', handlePointerMove);
+        canvas.addEventListener('click', handleCanvasClick);
+        canvas.addEventListener('touchstart', handleTouchStart);
+        canvas.addEventListener('touchend', handleTouchEnd);
+        canvas.addEventListener('mouseup', handleTouchEnd);
 
         //Estado del audio
         let audios = [];
@@ -196,9 +203,7 @@
                     }
                 }
             }
-          
             draw() {
-                // Asegurarse de que el canvas esté limpio
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#000";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -268,45 +273,7 @@
         }
 
         const cloth = new Cloth();
-
-          //Crear las  restricciones
-         Cloth.prototype.createConstraints = function() {
-            // Crear restricciones horizontales
-            for (let y = 0; y <= numPointsY; y++) {
-                for (let x = 0; x < numPointsX; x++) {
-                    this.constraints.push({
-                        p1: this.getPoint(x, y),
-                        p2: this.getPoint(x + 1, y),
-                        distance: restDistance
-                    });
-                }
-            }
-
-            // Crear restricciones verticales
-            for (let x = 0; x <= numPointsX; x++) {
-                for (let y = 0; y < numPointsY; y++) {
-                    this.constraints.push({
-                        p1: this.getPoint(x, y),
-                        p2: this.getPoint(x, y + 1),
-                        distance: restDistance
-                    });
-                }
-            }
-        }
-        cloth.createConstraints();
-
-
-        // Inicializa el audio
-        function initAudioContext() {
-            audioContext = new(window.AudioContext || window.webkitAudioContext)();
-            audios = audioFiles.map(file => {
-                const audio = new Audio(file);
-                audio.volume = 0.7;
-                return audio;
-            });
-           
-            playAudio("incertidumbre.mp3");
-        }
+        cloth.createConstraints(); // Llamar a crear restricciones después de inicializar
 
         //Touch
         function handleTouchStart() {
@@ -319,20 +286,35 @@
         function handleTouchEnd() {
             movementActive = false;
         }
+        // Inicializa el audio
+        function initAudioContext() {
+            audioContext = new(window.AudioContext || window.webkitAudioContext)();
+            // Carga asíncrona de audios
+            Promise.all(audioFiles.map(file => {
+                return new Promise((resolve, reject) => {
+                    const audio = new Audio(file);
+                    audio.volume = 0.7;
+                    audio.addEventListener('canplaythrough', () => resolve(audio));
+                    audio.addEventListener('error', () => reject(`Error loading audio: ${file}`));
+                    audio.src = file;
+                });
+            })).then(loadedAudios => {
+                audios = loadedAudios;
+                playAudio('incertidumbre.mp3'); // Inicia la reproducción después de la carga
+            }).catch(error => console.error(error));
+        }
         //Inactividad
         function startInactivityTimer() {
-             clearTimeout(inactivityTimeout);
+            clearTimeout(inactivityTimeout);
             inactivityTimeout = setTimeout(() => {
                 playAudio('incertidumbre.mp3');
             }, inactivityTime);
         }
-        
         // Resetear el tiempo
         function resetInactivityTimer() {
             clearTimeout(inactivityTimeout);
             startInactivityTimer();
         }
-
         // Interacciones click
         function handleCanvasClick(e) {
             if (!audioContext) {
@@ -341,7 +323,6 @@
             playAudio('atencion.mp3');
             resetInactivityTimer();
         }
-
         // Tocar los audios
         function playAudio(audioName) {
             resetInactivityTimer();
@@ -350,27 +331,25 @@
             }
             //Buscar audios
             let audioToPlay = audios.find(audio => audio.src.includes(audioName));
-             if (!audioToPlay) {
+            if (!audioToPlay) {
                 return;
             }
-            //Evitar loops
-            if (currentAudio && currentAudio !== audioToPlay) {
+           //Interumpir
+            if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
             }
             currentAudio = audioToPlay;
-            audioToPlay.play();
+            audioToPlay.play().catch(e => console.error("Error al reproducir audio:", e));
         }
-
         // Touch
         function handlePointerMove(event) {
             event.preventDefault();
             resetInactivityTimer();
 
-             if (!audioContext) {
+            if (!audioContext) {
                 initAudioContext();
             }
-
             let clientX, clientY;
             if (event.touches && event.touches.length > 0) {
                 clientX = event.touches[0].clientX;
@@ -426,7 +405,6 @@
         canvas.addEventListener('touchend', handleTouchEnd);
         canvas.addEventListener('mouseup', handleTouchEnd);
 
-
         // Iniciar automatización
         startInactivityTimer();
 
@@ -443,10 +421,10 @@
             const currentTime = performance.now();
             const deltaTime = (currentTime - lastTime) / 16;
             lastTime = currentTime;
-            
+
             cloth.update(deltaTime);
             cloth.draw();
-            
+
             requestAnimationFrame(animate);
         }
 
@@ -456,3 +434,4 @@
 </body>
 
 </html>
+
