@@ -1,486 +1,574 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tela Sonora Interactiva</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #000;
-            overflow: hidden;
-            touch-action: none;
-        }
-        canvas {
-            display: block;
-        }
-        #info {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            color: #666;
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            z-index: 100;
-            pointer-events: none;
-            opacity: 0.7;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>El acto de respirar - Presencia, pausa y cuidado</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #000;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+    
+    .container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    
+    .info {
+      position: absolute;
+      top: 30px;
+      text-align: center;
+      max-width: 600px;
+      padding: 0 20px;
+      font-size: 18px;
+      line-height: 1.5;
+      opacity: 0.8;
+    }
+    
+    .info h1 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+    
+    .info p {
+      margin-bottom: 5px;
+    }
+    
+    .audio-info {
+      position: absolute;
+      bottom: 30px;
+      font-size: 16px;
+      opacity: 0.7;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-    <div id="info">Mueve el cursor/dedo para interactuar</div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script>
-        // Configuración principal
-        let scene, camera, renderer, cloth, analyser, dataArray;
-        let audioContext, audioSource, gainNode;
-        let currentTrack = 0;
-        let isPlaying = false;
-        let lastInteractionTime = 0;
-        let mouseSpeed = 0;
-        let lastMouseX = 0;
-        let lastMouseY = 0;
-        let frameCount = 0;
+  <div class="container">
+    <div class="info">
+      <h1>El acto de respirar como gesto de presencia, pausa y cuidado</h1>
+      <p>Mueve el mouse o desliza el dedo para ver la sábana moverse e interactuar con los sonidos.</p>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <div class="audio-info" id="audio-info">
+      Movimiento iniciará la experiencia sonora
+    </div>
+  </div>
+
+  <script>
+    // Configuración del canvas y la simulación
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const audioInfo = document.getElementById('audio-info');
+    
+    // Ajustar tamaño del canvas
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    
+    // Configuración de archivos de audio
+    const audioFiles = [
+      'agitacion.mp3',
+      'incertidumbre.mp3',
+      'atencion.mp3',
+      'presencia.mp3',
+      'suspension.mp3',
+      'desconexion.mp3'
+    ];
+    
+    // Crear objetos de audio
+    const audios = [];
+    for (let i = 0; i < audioFiles.length; i++) {
+      const audio = new Audio(audioFiles[i]);
+      audio.volume = 0.7;
+      audios.push(audio);
+    }
+    
+    // Estado de reproducción
+    let currentAudioIndex = -1;
+    let isPlaying = false;
+    let sequenceStarted = false;
+    let lastInteractionTime = 0;
+    
+    // Variables para la interacción del mouse/táctil
+    let pointerX = canvas.width / 2;
+    let pointerY = canvas.height / 2;
+    let prevPointerX = pointerX;
+    let prevPointerY = pointerY;
+    let pointerSpeedX = 0;
+    let pointerSpeedY = 0;
+    let totalMovement = 0;
+    
+    // Configuración de la simulación de tela
+    const clothWidth = 400;
+    const clothHeight = 300;
+    const numPointsX = 30;
+    const numPointsY = 20;
+    const restDistance = clothWidth / numPointsX;
+    
+    // Clase Punto para la simulación de tela
+    class Point {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.originalX = x;
+        this.originalY = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.pinned = false;
+        this.mass = 1;
+      }
+    }
+    
+    // Clase tela para simulación
+    class Cloth {
+      constructor() {
+        this.points = [];
         
-        // Nombres de los archivos de audio en orden de reproducción
-        const audioTracks = [
-            'desconexion.mp3',
-            'agitacion.mp3',
-            'incertidumbre.mp3',
-            'atencion.mp3',
-            'presencia.mp3',
-            'suspension.mp3'
-        ];
-        
-        // Estado de los audios para facilitar la gestión
-        const audioElements = [];
-        let isChangingTrack = false;
-        
-        // Configuración de la simulación de tela
-        const clothWidth = 40;
-        const clothHeight = 30;
-        const segmentSize = 0.5;
-        const stiffness = 0.9; // Rigidez de la tela (0 = muy elástica, 1 = rígida)
-        const damping = 0.05; // Amortiguación (controla cómo se calman las vibraciones)
-        
-        // Configuración de la interacción
-        const fastMoveThreshold = 100; // Umbral para considerar un movimiento "rápido"
-        const interactionCooldown = 1000; // Tiempo mínimo entre interacciones (ms)
-        
-        // Clase para simular la física de la tela
-        class ClothPoint {
-            constructor(x, y, z, fixed = false) {
-                this.position = new THREE.Vector3(x, y, z);
-                this.oldPosition = new THREE.Vector3(x, y, z);
-                this.acceleration = new THREE.Vector3(0, 0, 0);
-                this.fixed = fixed;
-                this.mass = 1;
+        // Crear puntos de la tela
+        for (let y = 0; y <= numPointsY; y++) {
+          for (let x = 0; x <= numPointsX; x++) {
+            const u = x / numPointsX;
+            const v = y / numPointsY;
+            
+            // Posición inicial en forma de curva suave
+            const px = canvas.width / 2 - clothWidth / 2 + clothWidth * u;
+            const py = canvas.height / 2 - clothHeight / 2 + clothHeight * v;
+            
+            const point = new Point(px, py);
+            
+            // Fijar solo los puntos superiores para que cuelgue
+            if (y === 0) {
+              point.pinned = true;
             }
             
-            update(deltaTime) {
-                if (this.fixed) return;
-                
-                const temp = new THREE.Vector3().copy(this.position);
-                
-                // Verlet integration
-                this.position.addScaledVector(this.position.clone().sub(this.oldPosition), stiffness);
-                this.position.addScaledVector(this.acceleration, deltaTime * deltaTime);
-                
-                this.oldPosition.copy(temp);
-                this.acceleration.set(0, 0, 0);
-            }
-            
-            applyForce(force) {
-                this.acceleration.add(force.divideScalar(this.mass));
-            }
+            this.points.push(point);
+          }
         }
         
-        // Clase para gestionar la tela completa
-        class ClothSimulation {
-            constructor(width, height, segmentSize) {
-                this.width = width;
-                this.height = height;
-                this.segmentSize = segmentSize;
-                this.points = [];
-                this.constraints = [];
-                
-                // Crear malla de puntos
-                for (let y = 0; y <= height; y++) {
-                    for (let x = 0; x <= width; x++) {
-                        const xPos = (x - width/2) * segmentSize;
-                        const yPos = (y - height/2) * segmentSize * -1;
-                        const fixed = y === 0; // Fijar solo la fila superior
-                        
-                        this.points.push(new ClothPoint(xPos, yPos, 0, fixed));
-                    }
-                }
-                
-                // Crear restricciones estructurales (mantienen unida la tela)
-                const idx = (x, y) => x + y * (width + 1);
-                
-                // Restricciones horizontales
-                for (let y = 0; y <= height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        this.constraints.push([idx(x, y), idx(x+1, y), segmentSize]);
-                    }
-                }
-                
-                // Restricciones verticales
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x <= width; x++) {
-                        this.constraints.push([idx(x, y), idx(x, y+1), segmentSize]);
-                    }
-                }
-                
-                // Crear geometría y material
-                this.geometry = new THREE.PlaneGeometry(
-                    width * segmentSize,
-                    height * segmentSize,
-                    width,
-                    height
-                );
-                
-                this.material = new THREE.MeshPhongMaterial({
-                    color: 0xffffff,
-                    side: THREE.DoubleSide,
-                    specular: 0x222222,
-                    shininess: 30,
-                    flatShading: false
-                });
-                
-                this.mesh = new THREE.Mesh(this.geometry, this.material);
-                scene.add(this.mesh);
-            }
-            
-            update(deltaTime, audioData) {
-                // Aplicar fuerza basada en el audio
-                if (audioData && audioData.length > 0) {
-                    for (let i = 0; i < this.points.length; i++) {
-                        const point = this.points[i];
-                        
-                        // Usar diferentes frecuencias para diferentes áreas de la tela
-                        let audioIndex = Math.floor(i % audioData.length);
-                        let force = (audioData[audioIndex] / 128.0 - 1.0);
-                        
-                        // Calcular distancia desde el centro
-                        const x = i % (this.width + 1);
-                        const y = Math.floor(i / (this.width + 1));
-                        const centerX = this.width / 2;
-                        const centerY = this.height / 2;
-                        const distToCenter = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
-                        
-                        // Mayor efecto en el medio, menor en los bordes
-                        force *= Math.max(0, 1 - distToCenter / (this.width / 2)) * 2;
-                        
-                        // La fuerza se aplica en dirección Z (perpendicular a la tela)
-                        point.applyForce(new THREE.Vector3(0, 0, force * 3));
-                    }
-                }
-                
-                // Actualizar puntos
-                for (let i = 0; i < this.points.length; i++) {
-                    this.points[i].update(deltaTime);
-                }
-                
-                // Aplicar restricciones (para mantener la tela unida)
-                for (let i = 0; i < 3; i++) { // Varias iteraciones para mayor estabilidad
-                    this.satisfyConstraints();
-                }
-                
-                // Actualizar geometría
-                const positions = this.geometry.attributes.position.array;
-                
-                for (let i = 0; i < this.points.length; i++) {
-                    positions[i * 3] = this.points[i].position.x;
-                    positions[i * 3 + 1] = this.points[i].position.y;
-                    positions[i * 3 + 2] = this.points[i].position.z;
-                }
-                
-                this.geometry.attributes.position.needsUpdate = true;
-                this.geometry.computeVertexNormals(); // Recalcular normales para correcta iluminación
-            }
-            
-            satisfyConstraints() {
-                for (let i = 0; i < this.constraints.length; i++) {
-                    const [a, b, distance] = this.constraints[i];
-                    const pointA = this.points[a];
-                    const pointB = this.points[b];
-                    
-                    const diff = new THREE.Vector3().subVectors(pointB.position, pointA.position);
-                    const currentDist = diff.length();
-                    
-                    if (currentDist === 0) continue;
-                    
-                    const correctionFactor = (distance - currentDist) / currentDist * 0.5;
-                    const correction = diff.multiplyScalar(correctionFactor);
-                    
-                    if (!pointA.fixed) {
-                        pointA.position.sub(correction);
-                    }
-                    
-                    if (!pointB.fixed) {
-                        pointB.position.add(correction);
-                    }
-                }
-            }
+        // Generar el índice para acceder a los puntos fácilmente
+        this.getPoint = (x, y) => this.points[y * (numPointsX + 1) + x];
+        
+        // Conectar puntos con restricciones elásticas
+        this.constraints = [];
+        
+        // Restricciones estructurales horizontales
+        for (let y = 0; y <= numPointsY; y++) {
+          for (let x = 0; x < numPointsX; x++) {
+            this.constraints.push({
+              p1: this.getPoint(x, y),
+              p2: this.getPoint(x + 1, y),
+              distance: restDistance
+            });
+          }
         }
         
-        // Inicializar Three.js y configurar la escena
-        function init() {
-            // Crear escena
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000000);
-            
-            // Configurar cámara
-            const aspect = window.innerWidth / window.innerHeight;
-            camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 1000);
-            camera.position.set(0, -5, 25);
-            camera.lookAt(0, 0, 0);
-            
-            // Configurar renderizador
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            document.body.appendChild(renderer.domElement);
-            
-            // Iluminación
-            const ambientLight = new THREE.AmbientLight(0x404040);
-            scene.add(ambientLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight.position.set(5, 10, 7);
-            scene.add(directionalLight);
-            
-            const backLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            backLight.position.set(-5, -10, -7);
-            scene.add(backLight);
-            
-            // Crear simulación de tela
-            cloth = new ClothSimulation(clothWidth, clothHeight, segmentSize);
-            
-            // Inicializar sistema de audio
-            initAudio();
-            
-            // Configurar manejadores de eventos
-            window.addEventListener('resize', onWindowResize);
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('touchmove', onTouchMove);
-            
-            // Iniciar bucle de animación
-            animate();
+        // Restricciones estructurales verticales
+        for (let x = 0; x <= numPointsX; x++) {
+          for (let y = 0; y < numPointsY; y++) {
+            this.constraints.push({
+              p1: this.getPoint(x, y),
+              p2: this.getPoint(x, y + 1),
+              distance: restDistance
+            });
+          }
         }
         
-        // Inicializar Web Audio API y cargar archivos de audio
-        function initAudio() {
-            try {
-                // Inicializar contexto de audio
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                gainNode = audioContext.createGain();
-                gainNode.gain.value = 0.5; // Volumen inicial al 50%
-                
-                // Crear analizador para procesar el audio
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = 256;
-                dataArray = new Uint8Array(analyser.frequencyBinCount);
-                
-                // Configurar la cadena de audio
-                gainNode.connect(analyser);
-                analyser.connect(audioContext.destination);
-                
-                // Cargar todos los archivos de audio
-                for (let i = 0; i < audioTracks.length; i++) {
-                    const audio = new Audio(audioTracks[i]);
-                    audio.preload = 'auto';
-                    audioElements.push(audio);
-                    
-                    audio.addEventListener('ended', () => {
-                        if (i === 0) {
-                            // Si es desconexión (modo reposo), volver a reproducir en bucle
-                            playTrack(0, true);
-                        } else if (i < audioTracks.length - 1) {
-                            // Si no es el último, reproducir el siguiente
-                            playTrack(i + 1);
-                        } else {
-                            // Si es el último, volver al modo reposo
-                            playTrack(0, true);
-                        }
-                    });
-                }
-                
-                // Comenzar con desconexion.mp3 en bucle
-                setTimeout(() => {
-                    playTrack(0, true);
-                }, 1000);
-                
-            } catch (e) {
-                console.error("Error al inicializar el audio:", e);
-            }
+        // Restricciones de corte diagonal 1
+        for (let y = 0; y < numPointsY; y++) {
+          for (let x = 0; x < numPointsX; x++) {
+            this.constraints.push({
+              p1: this.getPoint(x, y),
+              p2: this.getPoint(x + 1, y + 1),
+              distance: Math.sqrt(restDistance * restDistance * 2)
+            });
+          }
         }
         
-        // Función para reproducir una pista de audio específica
-        function playTrack(trackIndex, loop = false) {
-            if (isChangingTrack) return;
-            isChangingTrack = true;
+        // Restricciones de corte diagonal 2
+        for (let y = 0; y < numPointsY; y++) {
+          for (let x = 0; x < numPointsX; x++) {
+            this.constraints.push({
+              p1: this.getPoint(x + 1, y),
+              p2: this.getPoint(x, y + 1),
+              distance: Math.sqrt(restDistance * restDistance * 2)
+            });
+          }
+        }
+      }
+      
+      update(dt) {
+        // Constantes físicas
+        const GRAVITY = 0.0981 * dt;
+        const DAMPING = 0.97;
+        const DRAG = 1 - 0.02;
+        
+        // Aplicar fuerzas
+        for (let i = 0; i < this.points.length; i++) {
+          const point = this.points[i];
+          if (!point.pinned) {
+            // Acumular fuerzas
+            point.vy += GRAVITY;
             
-            // Desconectar fuente actual si existe
-            if (audioSource) {
-                audioSource.disconnect();
-            }
+            // Verlet integration
+            const prevX = point.x;
+            const prevY = point.y;
             
-            // Pausar todas las pistas
-            for (let i = 0; i < audioElements.length; i++) {
-                audioElements[i].pause();
-                audioElements[i].currentTime = 0;
-            }
+            point.x += point.vx;
+            point.y += point.vy;
             
-            currentTrack = trackIndex;
-            const audio = audioElements[trackIndex];
-            audio.loop = loop;
-            
-            // Crear fade out/in para transición suave
-            if (gainNode.gain.value > 0) {
-                gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
-                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5);
-                
-                setTimeout(() => {
-                    connectAndPlayTrack(audio);
-                    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-                    gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 0.5);
-                    isChangingTrack = false;
-                }, 500);
-            } else {
-                connectAndPlayTrack(audio);
-                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-                gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 0.5);
-                isChangingTrack = false;
-            }
+            // Actualizar velocidades con amortiguación
+            point.vx = (point.x - prevX) * DAMPING;
+            point.vy = (point.y - prevY) * DAMPING;
+          }
         }
         
-        // Función auxiliar para conectar y reproducir una pista
-        function connectAndPlayTrack(audio) {
-            // Crear nueva fuente de audio
-            audioSource = audioContext.createMediaElementSource(audio);
-            audioSource.connect(gainNode);
+        // Resolver restricciones
+        const iterations = 15;
+        for (let i = 0; i < iterations; i++) {
+          for (let j = 0; j < this.constraints.length; j++) {
+            const constraint = this.constraints[j];
+            const p1 = constraint.p1;
+            const p2 = constraint.p2;
             
-            // Reproducir audio
-            let playPromise = audio.play();
-            if (playPromise) {
-                playPromise.catch(e => console.error("Error al reproducir audio:", e));
+            // Cálculo de la distancia actual
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const currentDistance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (currentDistance > 0) {
+              // Calcular dirección
+              const diff = (constraint.distance - currentDistance) / currentDistance;
+              
+              // Distribuir corrección
+              const percent1 = p1.pinned ? 0 : 0.5;
+              const percent2 = p2.pinned ? 0 : 0.5;
+              
+              const offsetX = dx * diff;
+              const offsetY = dy * diff;
+              
+              p1.x -= offsetX * percent1;
+              p1.y -= offsetY * percent1;
+              
+              p2.x += offsetX * percent2;
+              p2.y += offsetY * percent2;
             }
-            isPlaying = true;
+          }
+        }
+      }
+      
+      applyWindForce(forceX, forceY) {
+        // Aplicar fuerzas de viento a todos los puntos
+        for (let i = 0; i < this.points.length; i++) {
+          const point = this.points[i];
+          if (!point.pinned) {
+            // Añadir un pequeño componente aleatorio para simular turbulencia
+            const randomX = (Math.random() - 0.5) * 0.1;
+            const randomY = (Math.random() - 0.5) * 0.1;
+            
+            point.vx += forceX + randomX;
+            point.vy += forceY + randomY;
+          }
+        }
+      }
+      
+      draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Dibujar la tela con degradado suave
+        for (let y = 0; y < numPointsY; y++) {
+          for (let x = 0; x < numPointsX; x++) {
+            const p1 = this.getPoint(x, y);
+            const p2 = this.getPoint(x + 1, y);
+            const p3 = this.getPoint(x + 1, y + 1);
+            const p4 = this.getPoint(x, y + 1);
+            
+            // Crear gradiente para simular sombras
+            const centerX = (p1.x + p2.x + p3.x + p4.x) / 4;
+            const centerY = (p1.y + p2.y + p3.y + p4.y) / 4;
+            
+            // Calcular normal aproximada para efectos de iluminación
+            const nx = (p3.y - p1.y);
+            const ny = -(p3.x - p1.x);
+            const norm = Math.sqrt(nx * nx + ny * ny);
+            
+            // Normalizar normal
+            const normalX = nx / norm;
+            const normalY = ny / norm;
+            
+            // Calcular valor de iluminación basado en la normal
+            const lightX = 0.5;
+            const lightY = -1;
+            const lightIntensity = (normalX * lightX + normalY * lightY) * 0.5 + 0.5;
+            
+            // Color basado en iluminación
+            const brightness = Math.floor(210 + lightIntensity * 45);
+            
+            // Dibujar cuadrilátero
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p3.x, p3.y);
+            ctx.lineTo(p4.x, p4.y);
+            ctx.closePath();
+            
+            // Gradiente radial para simular pliegues y ondulaciones
+            const gradient = ctx.createRadialGradient(
+              centerX, centerY, 0,
+              centerX, centerY, restDistance * 2
+            );
+            
+            gradient.addColorStop(0, `rgba(${brightness}, ${brightness}, ${brightness}, 0.9)`);
+            gradient.addColorStop(1, `rgba(${brightness-20}, ${brightness-20}, ${brightness-20}, 0.85)`);
+            
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // Líneas muy suaves para simular pliegues
+            ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+    }
+    
+    // Crear tela
+    const cloth = new Cloth();
+    
+    // Función para reproducir audio según la secuencia
+    function playNextAudio() {
+      // Si ya hay un audio reproduciéndose, no hacer nada
+      if (isPlaying) return;
+      
+      // Avanzar al siguiente audio en la secuencia
+      if (!sequenceStarted) {
+        // Iniciar la secuencia desde uno de los dos puntos de entrada
+        currentAudioIndex = Math.random() < 0.5 ? 0 : 4; // Agitación o Suspensión
+        sequenceStarted = true;
+      } else {
+        // Secuencia específica según lo solicitado
+        if (currentAudioIndex === 0) { // Después de agitación
+          currentAudioIndex = 1; // incertidumbre
+        } else if (currentAudioIndex === 1) { // Después de incertidumbre
+          currentAudioIndex = 2; // atención
+        } else if (currentAudioIndex === 2) { // Después de atención
+          currentAudioIndex = 3; // presencia
+        } else if (currentAudioIndex === 3) { // Después de presencia
+          currentAudioIndex = 4; // suspensión
+        } else if (currentAudioIndex === 4) { // Después de suspensión
+          currentAudioIndex = 5; // desconexión
+        } else if (currentAudioIndex === 5) { // Después de desconexión
+          currentAudioIndex = 0; // volver a agitación
+        }
+      }
+      
+      // Parar todos los audios anteriores
+      for (let i = 0; i < audios.length; i++) {
+        audios[i].pause();
+        audios[i].currentTime = 0;
+      }
+      
+      // Reproducir el audio actual
+      const audio = audios[currentAudioIndex];
+      audio.play();
+      isPlaying = true;
+      
+      // Mostrar el nombre del audio que se está reproduciendo
+      audioInfo.textContent = "Reproduciendo: " + audioFiles[currentAudioIndex].replace('.mp3', '');
+      
+      // Cuando termine el audio, marcar como no reproduciendo
+      audio.onended = function() {
+        isPlaying = false;
+        // Reproducir automáticamente el siguiente en la secuencia
+        setTimeout(playNextAudio, 1000);
+      };
+    }
+    
+    // Función para manejar el movimiento del puntero (mouse o táctil)
+    function handlePointerMove(x, y) {
+      // Calcular velocidad del puntero
+      pointerSpeedX = x - pointerX;
+      pointerSpeedY = y - pointerY;
+      
+      // Calcular distancia recorrida
+      const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
+      totalMovement += distance;
+      
+      // Actualizar posición del puntero
+      pointerX = x;
+      pointerY = y;
+      
+      // Actualizar tiempo de la última interacción
+      lastInteractionTime = performance.now();
+      
+      // Si el movimiento acumulado es suficiente, iniciar reproducción de audio
+      if (totalMovement > 100 && !isPlaying) {
+        playNextAudio();
+        totalMovement = 0;
+      }
+      
+      // Aplicar fuerza del puntero a la tela
+      const pointerForceRadius = 150;
+      const pointerForce = 0.5;
+      
+      for (let i = 0; i < cloth.points.length; i++) {
+        const point = cloth.points[i];
+        const dx = point.x - pointerX;
+        const dy = point.y - pointerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < pointerForceRadius) {
+          const force = (1 - dist / pointerForceRadius) * pointerForce;
+          point.vx += (pointerSpeedX * force) / point.mass;
+          point.vy += (pointerSpeedY * force) / point.mass;
+        }
+      }
+    }
+    
+    // Listener para el movimiento del mouse
+    window.addEventListener('mousemove', function(event) {
+      handlePointerMove(event.clientX, event.clientY);
+    });
+    
+    // Listener para eventos táctiles
+    window.addEventListener('touchmove', function(event) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      handlePointerMove(touch.clientX, touch.clientY);
+    });
+    
+    // Listener para redimensionar la ventana
+    window.addEventListener('resize', function() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+    
+    // Variables para el bucle de animación
+    let lastTime = performance.now();
+    
+    // Función de animación
+    function animate() {
+      const currentTime = performance.now();
+      const deltaTime = (currentTime - lastTime) / 16; // Normalizado a 60 FPS
+      lastTime = currentTime;
+      
+      // Aplicar fuerza basada en el audio actual
+      if (isPlaying) {
+        let audioForce = 0;
+        
+        // Crear un analizador de audio para el audio actual si aún no existe
+        if (!audios[currentAudioIndex].analyser) {
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          const source = audioContext.createMediaElementSource(audios[currentAudioIndex]);
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          source.connect(analyser);
+          analyser.connect(audioContext.destination);
+          audios[currentAudioIndex].analyser = analyser;
+          audios[currentAudioIndex].dataArray = new Uint8Array(analyser.frequencyBinCount);
         }
         
-        // Cambiar a la siguiente secuencia después de una interacción rápida
-        function startSequence(fastMovement = true) {
-            const now = Date.now();
-            if (now - lastInteractionTime < interactionCooldown) {
-                return; // Evitar disparar demasiado rápido
-            }
-            
-            lastInteractionTime = now;
-            
-            // Si movimiento rápido, comenzar con agitacion.mp3
-            // Si movimiento normal, comenzar con incertidumbre.mp3
-            if (fastMovement) {
-                playTrack(1); // agitacion.mp3
-            } else {
-                playTrack(2); // incertidumbre.mp3
-            }
+        // Analizar el audio actual
+        const analyser = audios[currentAudioIndex].analyser;
+        const dataArray = audios[currentAudioIndex].dataArray;
+        analyser.getByteFrequencyData(dataArray);
+        
+        // Calcular fuerza basada en el volumen del audio
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        audioForce = sum / dataArray.length / 255;
+        
+        // Aplicar fuerza al cloth según el audio
+        // Cada audio tiene un patrón de movimiento diferente
+        const time = currentTime * 0.001;
+        let forceX = 0;
+        let forceY = 0;
+        
+        switch (currentAudioIndex) {
+          case 0: // agitación
+            forceX = Math.sin(time * 5) * audioForce * 0.2;
+            forceY = Math.cos(time * 6) * audioForce * 0.15;
+            break;
+          case 1: // incertidumbre
+            forceX = Math.sin(time * 3) * audioForce * 0.1;
+            forceY = Math.cos(time * 2) * audioForce * 0.1;
+            break;
+          case 2: // atención
+            forceX = Math.sin(time * 1.5) * audioForce * 0.08;
+            forceY = Math.cos(time * 1.7) * audioForce * 0.06;
+            break;
+          case 3: // presencia
+            forceX = Math.sin(time) * audioForce * 0.05;
+            forceY = Math.cos(time * 0.8) * audioForce * 0.04;
+            break;
+          case 4: // suspensión
+            forceX = Math.sin(time * 0.5) * audioForce * 0.04;
+            forceY = Math.cos(time * 0.4) * audioForce * 0.03;
+            break;
+          case 5: // desconexión
+            forceX = Math.sin(time * 0.3) * audioForce * 0.02;
+            forceY = Math.cos(time * 0.2) * audioForce * 0.01;
+            break;
         }
         
-        // Evento: redimensionar ventana
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+        cloth.applyWindForce(forceX, forceY);
+      } else {
+        // Animación suave cuando no hay audio
+        const time = currentTime * 0.001;
+        const gentleForceX = Math.sin(time * 0.7) * 0.01;
+        const gentleForceY = Math.cos(time * 0.5) * 0.007;
         
-        // Evento: movimiento del ratón
-        function onMouseMove(event) {
-            // Si no se ha iniciado el contexto de audio, iniciarlo
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-            
-            // Calcular velocidad del cursor
-            const dx = event.clientX - lastMouseX;
-            const dy = event.clientY - lastMouseY;
-            const currentSpeed = Math.sqrt(dx * dx + dy * dy);
-            
-            // Actualizar velocidad promedio con suavizado
-            mouseSpeed = mouseSpeed * 0.8 + currentSpeed * 0.2;
-            
-            // Iniciar secuencia si el movimiento es rápido
-            if (mouseSpeed > fastMoveThreshold && currentTrack === 0) {
-                startSequence(true);
-            } else if (mouseSpeed > fastMoveThreshold / 2 && mouseSpeed <= fastMoveThreshold && currentTrack === 0) {
-                startSequence(false);
-            }
-            
-            // Guardar posición actual para el próximo cálculo
-            lastMouseX = event.clientX;
-            lastMouseY = event.clientY;
-        }
-        
-        // Evento: movimiento táctil
-        function onTouchMove(event) {
-            event.preventDefault();
-            
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-            
-            if (event.touches.length > 0) {
-                const touch = event.touches[0];
-                
-                // Calcular velocidad del dedo
-                const dx = touch.clientX - lastMouseX;
-                const dy = touch.clientY - lastMouseY;
-                const currentSpeed = Math.sqrt(dx * dx + dy * dy);
-                
-                // Actualizar velocidad promedio con suavizado
-                mouseSpeed = mouseSpeed * 0.8 + currentSpeed * 0.2;
-                
-                // Iniciar secuencia si el movimiento es rápido
-                if (mouseSpeed > fastMoveThreshold && currentTrack === 0) {
-                    startSequence(true);
-                } else if (mouseSpeed > fastMoveThreshold / 2 && mouseSpeed <= fastMoveThreshold && currentTrack === 0) {
-                    startSequence(false);
-                }
-                
-                // Guardar posición actual para el próximo cálculo
-                lastMouseX = touch.clientX;
-                lastMouseY = touch.clientY;
-            }
-        }
-        
-        // Función de animación principal
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            // Actualizar contador de frames
-            frameCount++;
-            
-            // Procesar datos de audio si está disponible
-            if (analyser && isPlaying) {
-                analyser.getByteFrequencyData(dataArray);
-            }
-            
-            // Actualizar simulación de tela
-            if (cloth) {
-                cloth.update(0.016, dataArray); // 0.016 = aproximadamente 60fps
-            }
-            
-            // Renderizar escena
-            renderer.render(scene, camera);
-            
-            // Reducir gradualmente la velocidad del ratón cuando no hay movimiento
-            mouseSpeed *= 0.95;
-        }
-        
-        // Iniciar la aplicación cuando se cargue la página
-        window.onload = init;
-    </script>
+        cloth.applyWindForce(gentleForceX, gentleForceY);
+      }
+      
+      // Actualizar simulación
+      cloth.update(deltaTime);
+      
+      // Dibujar tela
+      cloth.draw();
+      
+      // Continuar animación
+      requestAnimationFrame(animate);
+    }
+    
+    // Iniciar animación
+    animate();
+    
+    // Precargar los audios
+    window.addEventListener('load', function() {
+      // Intentar cargar los audios
+      for (let i = 0; i < audios.length; i++) {
+        audios[i].load();
+      }
+    });
+  </script>
 </body>
 </html>
