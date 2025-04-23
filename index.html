@@ -311,32 +311,33 @@
         function playNextAudio(movementSpeed) {
             // Si ya hay un audio reproduciéndose, no hacer nada
             if (isPlaying) return;
-            const fastMovementThreshold = 5;
-            // Avanzar al siguiente audio en la secuencia
+
+            //Ajuste de sensibilidad
+            const fastMovementThreshold = 5
+
+            //Definir la secuencia
             if (!sequenceStarted) {
-                // Iniciar la secuencia desde uno de los dos puntos de entrada
-                currentAudioIndex = Math.random() < 0.5 ? 0 : 4; // Agitación o Suspensión
+                currentAudioIndex = Math.random() < 0.5 ? 0 : 4;
                 sequenceStarted = true;
             } else {
-                // Secuencia específica según lo solicitado
                 if (movementSpeed > fastMovementThreshold) {
-                  currentAudioIndex = 0
-                } else if (currentAudioIndex === 0) { // Después de agitación
-                    currentAudioIndex = 1; // incertidumbre
-                } else if (currentAudioIndex === 1) { // Después de incertidumbre
-                    currentAudioIndex = 2; // atención
-                } else if (currentAudioIndex === 2) { // Después de atención
-                    currentAudioIndex = 3; // presencia
-                } else if (currentAudioIndex === 3) { // Después de presencia
-                    currentAudioIndex = 4; // suspensión
-                } else if (currentAudioIndex === 4) { // Después de suspensión
-                    currentAudioIndex = 5; // desconexión
-                } else if (currentAudioIndex === 5) { // Después de desconexión
-                    currentAudioIndex = 0; // volver a agitación
+                    currentAudioIndex = 0
+                } else if (currentAudioIndex === 0) {
+                    currentAudioIndex = 1;
+                } else if (currentAudioIndex === 1) {
+                    currentAudioIndex = 2;
+                } else if (currentAudioIndex === 2) {
+                    currentAudioIndex = 3;
+                } else if (currentAudioIndex === 3) {
+                    currentAudioIndex = 4;
+                } else if (currentAudioIndex === 4) {
+                    currentAudioIndex = 5;
+                } else if (currentAudioIndex === 5) {
+                    currentAudioIndex = 0;
                 }
             }
 
-            // Parar todos los audios anteriores
+            //Para todos los audios
             for (let i = 0; i < audios.length; i++) {
                 if (audios[i]) {
                     audios[i].pause();
@@ -344,52 +345,43 @@
                 }
             }
             if (!audioContext) {
-              audioContext = new (window.AudioContext || window.webkitAudioContext)();
-               audios = audioFiles.map(file => {
-                  const audio = new Audio(file);
-                  audio.volume = 0.7;
-                  return audio;
-              });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audios = audioFiles.map(file => {
+                    const audio = new Audio(file);
+                    audio.volume = 0.7;
+                    return audio;
+                });
             }
-
-            // Reproducir el audio actual
+            //reproducir el audo
             const audio = audios[currentAudioIndex];
             audio.play();
             isPlaying = true;
 
-            // Cuando termine el audio, marcar como no reproduciendo
             audio.onended = function() {
                 isPlaying = false;
-                // Reproducir automáticamente el siguiente en la secuencia
                 setTimeout(playNextAudio, 1000);
             };
         }
 
         // Función para manejar el movimiento del puntero (mouse o táctil)
         function handlePointerMove(x, y) {
-            // Calcular velocidad del puntero
             pointerSpeedX = x - pointerX;
             pointerSpeedY = y - pointerY;
 
-            // Calcular distancia recorrida
             const distance = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
             totalMovement += distance;
 
             const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY)
-            // Actualizar posición del puntero
             pointerX = x;
             pointerY = y;
 
-            // Actualizar tiempo de la última interacción
             lastInteractionTime = performance.now();
 
-            // Si el movimiento acumulado es suficiente, iniciar reproducción de audio
             if (totalMovement > 100 && !isPlaying) {
                 playNextAudio(movementSpeed);
                 totalMovement = 0;
             }
 
-            // Aplicar fuerza del puntero a la tela
             const pointerForceRadius = 150;
             const pointerForce = 0.5;
 
@@ -431,22 +423,10 @@
         // Función de animación
         function animate() {
             const currentTime = performance.now();
-            const deltaTime = (currentTime - lastTime) / 16; // Normalizado a 60 FPS
+            const deltaTime = (currentTime - lastTime) / 16;
             lastTime = currentTime;
-
-            // Aplicar fuerza basada en el audio actual
-            if (isPlaying) {
-                let audioForce = 0;
-
-            }
-
-            // Actualizar la simulación de la tela
             cloth.update(deltaTime);
-
-            // Dibujar la tela
             cloth.draw();
-
-            // Solicitar el próximo frame de animación
             requestAnimationFrame(animate);
         }
 
@@ -456,3 +436,4 @@
 </body>
 
 </html>
+
