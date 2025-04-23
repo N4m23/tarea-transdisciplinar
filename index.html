@@ -117,7 +117,7 @@
                 this.points = [];
                 // Crear puntos de la tela
                 for (let y = 0; y <= numPointsY; y++) {
-                    for (let x = 0; x <= numPointsX; x++) {
+                    for (let x = 0; x < numPointsX; x++) {
                         const u = x / numPointsX;
                         const v = y / numPointsY;
 
@@ -325,11 +325,9 @@
                     initAudioContext();
                 }
                 interactionActive = true; // Activar interacción al tocar la tela
-                handlePointerMove(event); // Iniciar la reproducción de audio
+                handlePointerMove(event);
                 movementActive = true;
-                
-                // Reproducir audio de presencia al inicio de la interacción
-                playAudio('presencia.mp3');
+
             }
         }
 
@@ -349,11 +347,11 @@
                     audio.addEventListener('canplaythrough', () => resolve(audio));
                     audio.addEventListener('error', () => reject(`Error loading audio: ${file}`));
                     audio.src = file;
+                    resolve(audio);
                 });
             })).then(loadedAudios => {
                 audios = loadedAudios;
-                // Reproducir presencia.mp3 al inicio
-                playAudio('presencia.mp3');
+            //    playAudio('presencia.mp3');
             }).catch(error => console.error(error));
         }
 
@@ -381,43 +379,49 @@
                 if (!audioContext) {
                     initAudioContext();
                 }
-                
+
                 const currentTime = performance.now();
                 const timeSinceLastClick = currentTime - lastClickTime;
                 lastClickTime = currentTime;
-                
+
                 // Determinar si es un clic rápido o lento
-                if (timeSinceLastClick < 500) { // Menos de 500ms entre clics se considera rápido
+                if (timeSinceLastClick < 500) {
                     playAudio('atencion.mp3');
                 } else {
                     playAudio('presencia.mp3');
                 }
-                
+
                 resetInactivityTimer();
             }
         }
 
         // Tocar los audios
         function playAudio(audioName) {
+            if (!interactionActive) return; // No reproducir si no hay interacción activa
+
             resetInactivityTimer();
             if (!audioContext) {
                 initAudioContext();
             }
+
             // No reiniciar si ya está sonando el mismo audio y está activo
             if (currentAudio && lastAudioName === audioName && !currentAudio.paused) {
                 return;
             }
+
             // Detener el audio anterior si es diferente
             if (currentAudio && lastAudioName !== audioName) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
             }
+
             let audioToPlay = audios.find(audio => audio.src.includes(audioName));
             if (!audioToPlay) return;
             currentAudio = audioToPlay;
             lastAudioName = audioName;
             audioToPlay.currentTime = 0;
             audioToPlay.play().catch(e => {});
+
             // Si el usuario sigue interactuando, repetir el audio al terminar
             audioToPlay.onended = function() {
                 if (interactionActive && lastAudioName === audioName) {
@@ -427,38 +431,21 @@
             };
         }
 
-        // Función para analizar el patrón de movimiento
-        function analyzeMovement(speed) {
-            // Añadir el tiempo actual y la velocidad al historial
-            const now = performance.now();
-            movementTimestamps.push({time: now, speed: speed});
-            
-            // Mantener solo los últimos 2 segundos de movimientos
-            while (movementTimestamps.length > 0 && now - movementTimestamps[0].time > 2000) {
-                movementTimestamps.shift();
+        function isMovementConstant() {
+            const now = Date.now();
+            const timeThreshold = 100; // Tiempo en milisegundos para considerar el movimiento constante
+            const speedThreshold = 2; // Velocidad mínima para considerar el movimiento constante
+
+            // Si el puntero está prácticamente en el mismo lugar
+            if (Math.abs(pointerX - lastPointerX) < 1 && Math.abs(pointerY - lastPointerY) < 1) {
+                return true;
             }
-            
-            // Calcular si el movimiento es constante
-            if (movementTimestamps.length >= 5) {
-                let isConstant = true;
-                const avgSpeed = movementTimestamps.reduce((sum, item) => sum + item.speed, 0) / movementTimestamps.length;
-                
-                // Determinar si es un movimiento constante basado en la consistencia de la velocidad
-                for (let i = 0; i < movementTimestamps.length; i++) {
-                    const speedDiff = Math.abs(movementTimestamps[i].speed - avgSpeed);
-                    if (speedDiff > avgSpeed * 0.5) { // Permitir 50% de variación
-                        isConstant = false;
-                        break;
-                    }
-                }
-                
-                return {
-                    isConstant: isConstant,
-                    avgSpeed: avgSpeed
-                };
+
+            // Si el tiempo entre el movimiento actual y el anterior es menor que el umbral
+            if (now - lastMovementTime < timeThreshold) {
+                return true;
             }
-            
-            return {isConstant: false, avgSpeed: speed};
+            return false
         }
 
         // Touch
@@ -466,6 +453,7 @@
             event.preventDefault();
             resetInactivityTimer();
 
+            // Coordenadas del mouse/dedo
             let clientX, clientY;
             if (event.touches && event.touches.length > 0) {
                 clientX = event.touches[0].clientX;
@@ -474,47 +462,46 @@
                 clientX = event.clientX;
                 clientY = event.clientY;
             }
+
+            // Verificar si el movimiento está dentro de la tela
             const rect = canvas.getBoundingClientRect();
             const x = clientX - rect.left;
             const y = clientY - rect.top;
 
-            if (isInsideCloth(x, y)) {
-                interactionActive = true;
+            let audioToPlay = null;
 
-                // Calcular velocidad de movimiento
-                pointerSpeedX = clientX - lastPointerX;
-                pointerSpeedY = clientY - lastPointerY;
-                
-                const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
-                const movementAnalysis = analyzeMovement(movementSpeed);
-                
-                // Actualizar posición para el siguiente frame
-                lastPointerX = clientX;
-                lastPointerY = clientY;
-                
-                // Decidir qué audio reproducir basado en el patrón de movimiento
-                let audioToPlay;
-                
-                if (movementAnalysis.isConstant && movementAnalysis.avgSpeed > 1) {
-                    audioToPlay = 'incertidumbre.mp3';
-                } else if (movementSpeed > 8) {
-                    audioToPlay = 'agitacion.mp3';
-                } else if (movementSpeed > 2) {
-                    audioToPlay = 'suspension.mp3';
-                } else {
-                    audioToPlay = 'suspension.mp3';
+            if (isInsideCloth(x, y)) {
+                if (!audioContext) {
+                    initAudioContext();
                 }
-                
-                playAudio(audioToPlay);
-                
+                interactionActive = true;
+                 const now = Date.now();
+                  //Mover la tela
+                pointerSpeedX = clientX - pointerX;
+                pointerSpeedY = clientY - pointerY;
+                const movementSpeed = Math.sqrt(pointerSpeedX * pointerSpeedX + pointerSpeedY * pointerSpeedY);
+                pointerX = clientX;
+                pointerY = clientY;
+                lastInteractionTime = performance.now();
+
+               if (isMovementConstant()) {
+                    audioToPlay = 'incertidumbre.mp3';
+                  }
+                else if (movementSpeed > 5) {
+                    audioToPlay = 'agitacion.mp3'; // Movimiento rápido
+                }
+                else {
+                    audioToPlay = 'suspension.mp3'; // Movimiento lento
+                }
+                  lastMovementTime = now;
                 // Fuerza a la tela
                 const pointerForceRadius = 150;
                 const pointerForce = 0.5;
 
                 for (let i = 0; i < cloth.points.length; i++) {
                     const point = cloth.points[i];
-                    const dx = point.x - clientX;
-                    const dy = point.y - clientY;
+                    const dx = point.x - pointerX;
+                    const dy = point.y - pointerY;
                     const dist = Math.sqrt(dx * dx + dy * dy);
 
                     if (dist < pointerForceRadius) {
@@ -524,19 +511,21 @@
                     }
                 }
             } else {
-                interactionActive = false;
-                if (currentAudio) {
-                    currentAudio.pause();
-                }
+                interactionActive = false; // Si el puntero sale de la tela, desactivar la interacción
             }
+            if (audioToPlay && lastAudioName !== audioToPlay && interactionActive) {
+                playAudio(audioToPlay);
+            }
+              lastPointerX = pointerX;
+              lastPointerY = pointerY;
         }
-        
+
         function isInsideCloth(x, y) {
             const clothLeft = canvas.width / 2 - clothWidth / 2;
             const clothTop = canvas.height / 2 - clothHeight / 2;
             return x >= clothLeft && x <= clothLeft + clothWidth && y >= clothTop && y <= clothTop + clothHeight;
         }
-        
+
         canvas.addEventListener('mousemove', handlePointerMove);
         canvas.addEventListener('touchmove', handlePointerMove);
         canvas.addEventListener('click', handleCanvasClick);
@@ -568,11 +557,8 @@
             requestAnimationFrame(animate);
         }
 
-        // Iniciar animación y audio cuando se carga la página
-        window.addEventListener('load', function() {
-            initAudioContext();
-            animate();
-        });
+        // Iniciar animación
+        animate();
     </script>
 </body>
 
