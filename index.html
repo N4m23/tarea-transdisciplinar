@@ -43,18 +43,39 @@
             font-size: 16px;
             z-index: 100;
         }
+
+        #audio-indicator {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            padding: 8px 12px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border-radius: 15px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 100;
+        }
+
+        #audio-indicator.active {
+            opacity: 1;
+        }
     </style>
 </head>
 
 <body>
     <canvas id="canvas"></canvas>
     <button id="start-button">Iniciar Experiencia</button>
+    <div id="audio-indicator">▶️ Reproduciendo: <span id="audio-name">ninguno</span></div>
 
     <script>
         // Configuración del canvas
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const startButton = document.getElementById('start-button');
+        const audioIndicator = document.getElementById('audio-indicator');
+        const audioNameDisplay = document.getElementById('audio-name');
 
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -336,10 +357,19 @@
             startInactivityTimer();
         }
 
-        // Inicializa el audio - CORREGIDO
+        // Inicializa el audio - MEJORADO
         function initAudioContext() {
             // La política de autoplay requiere una interacción del usuario
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Intentar reanudar el contexto si está suspendido
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    console.log("AudioContext reanudado con éxito");
+                }).catch(err => {
+                    console.error("Error al reanudar AudioContext:", err);
+                });
+            }
             
             // Crear elementos de audio para cada archivo
             audioFiles.forEach(file => {
@@ -417,7 +447,7 @@
             }
         }
 
-        // Tocar los audios - CORREGIDO
+        // Tocar los audios - MEJORADO
         function playAudio(audioName) {
             console.log("Intentando reproducir:", audioName);
             resetInactivityTimer();
@@ -431,6 +461,9 @@
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
+                
+                // Ocultar el indicador cuando se detiene el audio
+                audioIndicator.classList.remove('active');
             }
             
             const audioToPlay = audios[audioName];
@@ -441,6 +474,15 @@
             
             // Asegurar que el audio comienza desde el principio
             audioToPlay.currentTime = 0;
+            
+            // Mostrar el nombre del audio que se está reproduciendo
+            audioNameDisplay.textContent = audioName.replace('.mp3', '');
+            audioIndicator.classList.add('active');
+            
+            // Intentar reanudar el contexto de audio si está suspendido
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().catch(err => console.error("Error al reanudar contexto:", err));
+            }
             
             // Reproducir con promise para capturar posibles errores
             const playPromise = audioToPlay.play();
@@ -453,7 +495,10 @@
                     console.error("Error reproduciendo audio:", error);
                     // Intentar reproducir de nuevo en caso de error
                     setTimeout(() => {
-                        audioToPlay.play().catch(e => console.error("Reintento fallido:", e));
+                        // Intentar reanudar el contexto antes de volver a intentar
+                        audioContext.resume().then(() => {
+                            audioToPlay.play().catch(e => console.error("Reintento fallido:", e));
+                        });
                     }, 100);
                 });
             }
@@ -463,6 +508,9 @@
                 if (interactionActive && lastAudioName === audioName) {
                     audioToPlay.currentTime = 0;
                     audioToPlay.play().catch(e => console.error("Error en repetición:", e));
+                } else {
+                    // Ocultar el indicador cuando termina el audio
+                    audioIndicator.classList.remove('active');
                 }
             };
         }
@@ -567,6 +615,8 @@
                 interactionActive = false;
                 if (currentAudio) {
                     currentAudio.pause();
+                    // Ocultar el indicador cuando se detiene el audio
+                    audioIndicator.classList.remove('active');
                 }
             }
         }
@@ -581,6 +631,23 @@
         window.addEventListener('resize', function() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+        });
+
+        // MEJORA: manejo de visibilidad de la página
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                // Pausar audio cuando la página está oculta
+                if (currentAudio && !currentAudio.paused) {
+                    currentAudio.pause();
+                    audioIndicator.classList.remove('active');
+                }
+            } else {
+                // Reanudar el contexto de audio cuando la página vuelve a ser visible
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume().catch(err => console.error("Error al reanudar contexto:", err));
+                }
+                // No reiniciamos automáticamente el audio para no interrumpir la experiencia
+            }
         });
 
         //Animación
@@ -601,6 +668,4 @@
         cloth.draw();
     </script>
 </body>
-
-</html>
 
